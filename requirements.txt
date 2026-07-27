@@ -1,0 +1,35 @@
+# ── Deep learning (segmentation model) ───────────────────────────────────────
+torch
+pytorch-lightning
+torchmetrics
+segmentation-models-pytorch
+monai
+albumentations
+
+# ── Numerics & image I/O ─────────────────────────────────────────────────────
+numpy
+scipy
+scikit-image
+tifffile          # TIFF backend used by skimage.io for the slice dataset
+Pillow
+
+# ── Post-analysis (clustering / machine learning) ────────────────────────────
+scikit-learn      # t-SNE embedding
+hdbscan           # density-based chamber clustering
+pandas
+
+# ── Morphometric quantification ──────────────────────────────────────────────
+porespy           # local thickness, pore-network metrics
+openpyxl          # .xlsx export from the quantification notebooks
+
+# ── Visualisation & logging ──────────────────────────────────────────────────
+matplotlib
+plotly
+seaborn
+tensorboard
+click
+tqdm
+
+# ── Optional: notebooks and method-exploration prototypes ────────────────────
+scikit-posthocs   # post-hoc statistical tests in the quantification notebooks
+umap-learn        # only for experiments/prototypes/prototype_umap.py

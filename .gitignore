@@ -1,0 +1,42 @@
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# ── Large data kept outside version control ──────────────────────────────────
+# The repo intentionally ships only the training/validation slices, the
+# quantification results, and two sample editor states. Full micro-CT volumes
+# and labelled volumes are distributed separately (see README → Data).
+data/image_volumes/
+data/predicted_volumes/
+data/pores_cleaned/
+data/cluster_state/
+data/corrected_cluster_state/
+data/final_foram_state/
+data/analysis/
+data/visualizations/
+*.npy
+
+# Exception: sample editor states are small and ARE tracked
+!data/samples/editor_state/*.npz
+
+# ── Model checkpoints (distributed as GitHub Release assets) ─────────────────
+*.ckpt
+*.pth
+model/
+final_model/*.ckpt
+
+# ── Training run outputs ─────────────────────────────────────────────────────
+logs/
+tb_log/
+debug_logs/
+lightning_logs/
+*.log
+
+# ── OS / editor cruft ────────────────────────────────────────────────────────
+.DS_Store
+.vscode/
+*.swp
