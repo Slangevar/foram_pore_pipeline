@@ -63,43 +63,15 @@ class SegmentationDataset(Dataset):
         # Normalize image
         image_slice = image_slice / 255
         
-        # Use utils to convert colored mask to categorical one-hot
-        # utils.colored_to_categorical returns (mask_slice, weight_slice)
-        # The mask_slice has num_classes channels (3 in this case)
-        # It maps:
-        # Index 1 -> Red [230, 25, 75] -> Background
-        # Index 2 -> Green [60, 180, 75] -> Pores 
-        # Index 3 -> Yellow [255, 225, 25] -> Chamber
-        
-        # We need 3 classes: [Background, Chamber, Pores] -> [Red, Yellow, Green]
-        # So we request num_classes=3
-        cat_mask, _ = utils.colored_to_categorical(mask_slice, num_classes=3)
-        
-        # cat_mask is (H, W, 3) corresponding to indices 1, 2, 3 of the colors list
-        # Index 0 is Red (Background)
-        # Index 1 is Green (Pores)
-        # Index 2 is Yellow (Chamber)
-        # ... Wait, checking utils.py line 242:
-        # colors[1] = Red
-        # colors[2] = Green
-        # colors[3] = Yellow
-        
-        # So cat_mask[..., 0] is Red (Background)
-        # cat_mask[..., 1] is Green (Pores)
-        # cat_mask[..., 2] is Yellow (Chamber)
-        
-        # WE WANT: [Background, Chamber, Pores] -> [Red, Yellow, Green]
-        # So we need to reorder: [0, 2, 1]
-        
-        final_mask = np.zeros_like(cat_mask)
-        final_mask[..., 0] = cat_mask[..., 0] # Red -> Background
-        final_mask[..., 1] = cat_mask[..., 2] # Yellow -> Chamber
-        final_mask[..., 2] = cat_mask[..., 1] # Green -> Pores
-        
-        mask_slice = final_mask.astype(np.float32)
-        
-        # Handle weights (assuming binary weight slice from file is correct)
-        # Or we can derive it from the image itself as done in utils
+        # Colour-coded RGB annotation -> one-hot (H, W, 3) in CLASS_NAMES order:
+        # [background, chamber, pores]. utils.CLASS_COLORS is already in class
+        # order, so the channels need no reordering here.
+        # The second return value (a weight map derived from the unannotated
+        # colour) is discarded: the explicit weights/*.tiff files are used instead.
+        mask_slice, _ = utils.colored_to_categorical(mask_slice, num_classes=3)
+        mask_slice = mask_slice.astype(np.float32)
+
+        # Weight map is binary in the file (255 = annotated, 0 = ignore)
         weight_slice = weight_slice / 255
 	            
         # Augment sample

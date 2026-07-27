@@ -231,6 +231,22 @@ def get_random_volume_index(fewest_first=True):
 
 # Data representation functions -------------------------------------------------------------------------------------
 
+# Annotation palette, ordered to match metrics.CLASS_NAMES.
+#
+#   index 0  -> unannotated "ignore" region, excluded from the loss
+#   index i+1 -> class i  (background, chamber, pores)
+#
+# The order here IS the class order: colored_to_categorical returns channels
+# ready to use, so callers must not reorder them. Entries past index 3 are
+# spare colours for datasets with more than three classes.
+CLASS_COLORS = np.array([[0, 0, 0],           # ignore     (unannotated)
+                         [230, 25, 75],       # class 0    background
+                         [255, 225, 25],      # class 1    chamber
+                         [60, 180, 75],       # class 2    pores
+                         [0, 130, 200], [245, 130, 48],
+                         [145, 30, 180], [70, 240, 240], [240, 50, 230],
+                         [210, 245, 60], [170, 255, 195]])
+
 def make_categorical(data, class_values=None):
     if class_values is None:
         class_values = np.unique(data)
@@ -238,14 +254,18 @@ def make_categorical(data, class_values=None):
     return data
 
 def colored_to_categorical(colored_mask, num_classes=2):
-    
-    colors = np.array([[0,0,0], [230, 25, 75], [60, 180, 75], [255, 225, 25], [0, 130, 200], [245, 130, 48],
-                       [145, 30, 180], [70, 240, 240], [240, 50, 230], [210, 245, 60], [170, 255, 195]])
+    """Convert an RGB colour-coded annotation into one-hot class channels.
+
+    Returns (mask_slice, weight_slice):
+      mask_slice   (H, W, num_classes) one-hot, in CLASS_COLORS/CLASS_NAMES order
+      weight_slice (H, W) 1 where annotated, 0 over the unannotated ignore colour
+    """
+    colors = CLASS_COLORS
 
     mask = np.argmin([np.linalg.norm(colored_mask - colors[i], axis=-1) for i in range(len(colors))], axis=0)
-    
+
     class_values = np.arange(num_classes + 1)
-    
+
     categorical_mask = make_categorical(mask, class_values=class_values)
 
     weight_slice = 1 - categorical_mask[:,:,0]
@@ -254,12 +274,11 @@ def colored_to_categorical(colored_mask, num_classes=2):
     return mask_slice, weight_slice
 
 def categorical_to_colored(categorical_mask, num_classes=2):
-    
-    colors = np.array([[0,0,0], [230, 25, 75], [60, 180, 75], [255, 225, 25], [0, 130, 200], [245, 130, 48],
-                       [145, 30, 180], [70, 240, 240], [240, 50, 230], [210, 245, 60], [170, 255, 195]])
+    """Inverse of colored_to_categorical: one-hot class channels back to RGB."""
+    colors = CLASS_COLORS
 
     colored_mask = np.sum([categorical_mask[...,i][:,:,None] * colors[i + 1] for i in range(num_classes)], axis=0)
-    
+
     return colored_mask
                              
 def display_predictions():
@@ -289,12 +308,14 @@ def display_predictions():
             index = train_indices[i-len(val_images)]
             title = 'training'
             image = io.imread(train_images[index]) / 255
-            mask = np.argmax(io.imread(train_masks[index]), axis=-1)
+            # Decode via the palette: argmax over raw RGB would merge the
+            # background and chamber colours, which share a dominant red channel.
+            mask = np.argmax(colored_to_categorical(io.imread(train_masks[index]), num_classes=3)[0], axis=-1)
         else:    
             index = val_indices[i]
             title = 'validation'
             image = io.imread(val_images[index]) / 255
-            mask = np.argmax(io.imread(val_masks[index]), axis=-1)
+            mask = np.argmax(colored_to_categorical(io.imread(val_masks[index]), num_classes=3)[0], axis=-1)
 
         weight = (1 - (image == 0))
         pred = np.argmax(predict.predict(image, return_probabilities=True)[0,:,:,:-1], axis=-1) * weight
