@@ -48,7 +48,6 @@ scripts/analysis/
     analyze_otsu_pore_recovery.py        Ablation of the Otsu recovery step
     ...                                  Statistics and visualisation helpers
 notebooks/                               Quantification notebooks (see docs/)
-experiments/prototypes/                  Method exploration: UMAP, Isomap, watershed, shell-graph
 docs/                                    Data format, editor manual, quantification notes
 data/                                    Training slices + results (see Data below)
 annotation/                              Annotation interface (to be added)
@@ -153,7 +152,7 @@ python src/post_processing/add_back_forams.py pores_cleaned.npy cluster_state.np
 python scripts/analysis/reindex_clusters.py --in-dir corrected/ --out-dir final_state/
 ```
 
-Chamber clustering embeds morphological pore features with t-SNE and groups them with HDBSCAN; components HDBSCAN rejects as noise are reassigned to their nearest cluster by centroid proximity. Alternative embeddings and segmentation strategies that were evaluated but not adopted are kept in `experiments/prototypes/`.
+Chamber clustering embeds morphological pore features with t-SNE and groups them with HDBSCAN; components HDBSCAN rejects as noise are reassigned to their nearest cluster by centroid proximity.
 
 ### 4. Correction interface
 

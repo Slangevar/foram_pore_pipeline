@@ -30,6 +30,5 @@ tensorboard
 click
 tqdm
 
-# ── Optional: notebooks and method-exploration prototypes ────────────────────
+# ── Optional: notebooks ──────────────────────────────────────────────────────
 scikit-posthocs   # post-hoc statistical tests in the quantification notebooks
-umap-learn        # only for experiments/prototypes/prototype_umap.py
