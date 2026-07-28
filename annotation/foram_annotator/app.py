@@ -1077,11 +1077,14 @@ with ui.dialog() as dialog, ui.card():
 
 randomize()
 
-# ui.run(host='0.0.0.0', port=9546, show=False, reload=False)
-# ui.run(reload=True)
-# ui.run(port=9546, on_air=True)
-
+# reload=False matters: with nicegui's default (reload=True) the module is
+# re-executed in a worker subprocess, so the module-level setup above --
+# create_directories(), load_dataset() and randomize() -- runs twice, and the
+# reload watch path resolves against the working directory rather than the
+# package. show=False keeps it headless-safe on a compute/login node, where
+# there is no browser to open; the URL is printed on startup either way.
 ui.run(
     port=9546,
-    uvicorn_reload_dirs="foram_annotator",
+    reload=False,
+    show=False,
 )
