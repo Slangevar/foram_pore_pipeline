@@ -19,7 +19,6 @@ class Annotator(object):
         self.input_size = 256
         self.image = None
         self.mask = None
-        self.overlays = {}
         self.display_image = None
 
     def set_image(self, image):
@@ -27,26 +26,23 @@ class Annotator(object):
         self.input_size = image.shape[0]
         self.image = image
         self.mask = np.zeros((self.input_size, self.input_size, 3), dtype="uint8")
-        self.overlays = {}
         self.display_image = image
 
-    def new_path(self, x0, y0, brush_size, color, mode="paint", overlay=None):
+    def new_path(self, x0, y0, brush_size, color, mode="paint"):
 
         x0, y0 = self.get_roi_mouse_pos(x0, y0)
         brush_size = brush_size / self.canvas_size * self.scale
 
         self.annotations += [[]]
-        self.annotations[-1] += [[x0, y0, x0, y0, brush_size, color, mode, overlay]]
+        self.annotations[-1] += [[x0, y0, x0, y0, brush_size, color, mode]]
 
-    def continue_path(
-        self, x0, y0, x1, y1, brush_size, color, mode="paint", overlay=None
-    ):
+    def continue_path(self, x0, y0, x1, y1, brush_size, color, mode="paint"):
 
         x0, y0 = self.get_roi_mouse_pos(x0, y0)
         x1, y1 = self.get_roi_mouse_pos(x1, y1)
         brush_size = brush_size / self.canvas_size * self.scale
 
-        self.annotations[-1] += [[x0, y0, x1, y1, brush_size, color, mode, overlay]]
+        self.annotations[-1] += [[x0, y0, x1, y1, brush_size, color, mode]]
 
     def undo_annotation(self):
 
@@ -72,7 +68,7 @@ class Annotator(object):
 
             for j in range(len(path)):
 
-                x0, y0, x1, y1, brush_size, color, path_mode, overlay = path[j]
+                x0, y0, x1, y1, brush_size, color, path_mode = path[j]
                 x0 = (x0 - self.roi[0]) * self.canvas_size / self.scale
                 y0 = (y0 - self.roi[1]) * self.canvas_size / self.scale
                 x1 = (x1 - self.roi[0]) * self.canvas_size / self.scale
@@ -95,7 +91,7 @@ class Annotator(object):
 
         for j in range(len(path)):
 
-            x0, y0, x1, y1, brush_size, color, path_mode, overlay = path[j]
+            x0, y0, x1, y1, brush_size, color, path_mode = path[j]
             x0 = int(x0 * self.input_size)
             y0 = int(y0 * self.input_size)
             x1 = int(x1 * self.input_size)
@@ -113,37 +109,10 @@ class Annotator(object):
                 if j == len(path) - 1:
                     cv2.circle(self.mask, (x1, y1), int(brush_size / 2), color, -1)
 
-            elif path_mode == "capture_overlay":
-
-                overlay_mask = self.overlays[overlay]
-
-                overlay_capture = np.zeros(
-                    (overlay_mask.shape[0], overlay_mask.shape[1])
-                )
-
-                color = 255
-
-                cv2.circle(overlay_capture, (x0, y0), int(brush_size / 2), color, -1)
-                cv2.line(overlay_capture, (x0, y0), (x1, y1), color, int(brush_size))
-
-                if j == len(path) - 1:
-                    cv2.circle(
-                        overlay_capture, (x1, y1), int(brush_size / 2), color, -1
-                    )
-
-                overlay_capture_region = overlay_capture == 255
-                self.mask[overlay_capture_region] = overlay_mask[overlay_capture_region]
-
-    def update_display(
-        self, annotation_opacity=0.25, overlay_opacity=0.25, overlay=None
-    ):
+    def update_display(self, annotation_opacity=0.25):
 
         image = self.image / 255
         mask = self.mask / 255
-
-        if (len(self.overlays) > 0) and (overlay_opacity > 0) and (overlay is not None):
-            overlay = self.overlays[overlay] / 255
-            image = image * (1 - overlay_opacity) + overlay * overlay_opacity
 
         if annotation_opacity > 0:
             mask_overlay_region = mask[:, :, 1] > 0
@@ -186,7 +155,6 @@ class Annotator(object):
         self.deleted_annotations = []
 
         self.mask = np.zeros((self.input_size, self.input_size, 3), dtype="uint8")
-        self.overlays = {}
         self.display_image = self.image
 
     # Zooming, scale and translation functions-----------------------------------------------------------------------

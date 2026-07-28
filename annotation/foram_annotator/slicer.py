@@ -225,40 +225,6 @@ class Slicer(object):
             coords = self.get_interpolation_coords(slice_width=slice_width)
             return map_coordinates(volume, coords[axis], order=order)
 
-    def update_volume(self, data, volume, axis=0):
-        """
-        Updates the volume with slice information.
-        """
-
-        # Retrieve the coordinates
-        coords = self.get_interpolation_coords(slice_width=data.shape[0])
-
-        # Round coordinates to nearest integer values and flatten
-        slice_coords = (
-            np.round(coords[axis])
-            .reshape((3, np.prod(coords[axis].shape[1:])))
-            .astype(int)
-        )
-
-        slice_coords = np.array(
-            [np.clip(slice_coords[i], 0, volume.shape[i] - 1) for i in range(3)]
-        )
-
-        if len(data.shape) == 2:
-            data = data.ravel()
-        if len(data.shape) == 3:
-            data = data.reshape((data.shape[0] * data.shape[1], data.shape[2]))
-
-        volume[slice_coords[0, :], slice_coords[1, :], slice_coords[2, :]] = data
-
-        # # Keep only the coordinates that lie within the volume
-        # ind = (np.sum([(slice_coords[i] >= 0).astype(int) & (slice_coords[i] < volume.shape[i]) for i in range(3)], axis=0) == 3)
-        # slice_coords = np.array([slice_coords[i][ind] for i in range(3)])
-
-        # # Assign values
-        # volume[slice_coords[0,:], slice_coords[1,:], slice_coords[2,:]] = data.ravel()[ind]
-
-        return volume
 
     def shift_origin(self, shift_amount=[0, 0, 0]):
         """

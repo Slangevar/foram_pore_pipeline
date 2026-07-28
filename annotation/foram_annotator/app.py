@@ -1,26 +1,24 @@
 import os
+import sys
 import cv2
 import glob
 import time
-import pickle
-import asyncio
-import threading
 import numpy as np
 import json
 from PIL import Image
-from skimage import io
-from pathlib import Path
 
-import plotly.graph_objects as go
+# Allow launching as a plain script (python annotation/foram_annotator/app.py)
+# by putting the package's parent directory on the path, the same way the
+# entry points in src/cli/ do.
+package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if package_root not in sys.path:
+    sys.path.append(package_root)
 
-from nicegui import ui, events, run
+from nicegui import ui, events
 from nicegui.events import KeyEventArguments
 
-import segmentation_models_pytorch as smp
-
-from interactive_unet.slicer import Slicer
-from interactive_unet.annotator import Annotator
-from interactive_unet import utils, trainer, predict, suggestor
+from foram_annotator.annotator import Annotator
+from foram_annotator import utils
 
 MOVE_HZ = 20.0           # cap to ~20 updates/second
 MOVE_DT = 1.0 / MOVE_HZ
@@ -46,7 +44,14 @@ train_samples = glob.glob("data/train/images/*.tiff")
 num_classes = utils.get_num_classes()
 input_size = utils.get_input_size()
 
-# Color parameters
+# Color parameters.
+# Index 0 is the "unlabeled" slot; brush colours start at index 0 below and are
+# written into the RGB mask verbatim. For the foram dataset the convention is:
+#   red    (230, 25, 75)  -> background
+#   green  (60, 180, 75)  -> pores
+#   yellow (255, 225, 25) -> chamber (shell wall)
+# These RGB values are the interchange format read back by src/utils.py
+# (CLASS_COLORS) when the annotations are loaded for training.
 colors = [
     "rgba(230, 25, 75, 1)",
     "rgba(60, 180, 75, 1)",
@@ -62,10 +67,6 @@ colors = [
 color_idx = 1
 color_idx_prev = 1
 
-# Plotly figure parameters
-metric = "Loss"
-fig = utils.get_training_history_figure(metric)
-
 # Sampling parameters
 sampling_mode = "random"
 sampling_axis = "x"
@@ -74,10 +75,6 @@ sampling_axis = "x"
 canvas_size = 650
 annotator = Annotator(canvas_size)
 
-training = False
-predicting = False
-extracting = False
-suggesting = False
 interacting = False
 updated = True
 last_interaction = time.time()
@@ -410,9 +407,7 @@ def redraw_check():
 
 def redraw():
 
-    annotator.update_display(
-        ii.annotation_opacity, ii.overlay_opacity, overlay=ii.overlay
-    )
+    annotator.update_display(ii.annotation_opacity)
 
     if interacting:
         # Fast redraw
@@ -452,23 +447,13 @@ def clear():
     ii.y = 0
     ii.is_drawing = False
     ii.mode = "paint"
-    ii.overlay = None
-    ii.image_features = {
-        "features": None,  # Average features used for training.
-        "features_list": [],
-    }  # Contains features from multiple scales
-    ii.suggestor_model = None
     ii.brush_size = 40
 
     ii.cursor_opacity = 0.25
     ii.annotation_opacity = 0.25
-    ii.overlay_opacity = 0.25
 
     ui_slider_cursor_opacity.value = int(ii.cursor_opacity * 100)
     ui_slider_annotation_opacity.value = int(ii.annotation_opacity * 100)
-    ui_slider_overlay_opacity.value = int(ii.overlay_opacity * 100)
-
-    ui_button_predict.text = "Predict"
 
     redraw()
 
@@ -494,8 +479,6 @@ def key_handler(e: KeyEventArguments):
                 .astype("uint8")
             )
             annotator.set_image(np.repeat(image_slice[:, :, None], 3, axis=2))
-            ii.image_features = {"features": None, "features_list": []}
-            ii.suggestor_model = None
             redraw()
 
         # Previous slice in stack
@@ -507,8 +490,6 @@ def key_handler(e: KeyEventArguments):
                 .astype("uint8")
             )
             annotator.set_image(np.repeat(image_slice[:, :, None], 3, axis=2))
-            ii.image_features = {"features": None, "features_list": []}
-            ii.suggestor_model = None
             redraw()
 
         # Next class/color
@@ -524,13 +505,6 @@ def key_handler(e: KeyEventArguments):
             if color_idx < 0:
                 color_idx = num_classes - 1
             redraw_overlay()
-
-        # Toggle overlay
-        if e.key == "d":
-            toggle_overlay()
-
-        if e.key == "f":
-            cycle_overlay()
 
     if e.modifiers.ctrl and e.action.keydown and not e.action.repeat:
 
@@ -576,23 +550,7 @@ def mouse_handler(e: events.MouseEventArguments):
                 ii.brush_size,
                 colors[color_idx],
                 mode=ii.mode,
-                overlay=ii.overlay,
             )
-
-        if not e.alt and e.ctrl and not e.shift:
-
-            if len(annotator.overlays) > 0:
-
-                ii.is_drawing = True
-                ii.mode = "capture_overlay"
-                annotator.new_path(
-                    e.image_x,
-                    e.image_y,
-                    ii.brush_size,
-                    colors[color_idx],
-                    mode=ii.mode,
-                    overlay=ii.overlay,
-                )
 
     if e.type == "mousemove":
 
@@ -623,7 +581,6 @@ def mouse_handler(e: events.MouseEventArguments):
                 ii.brush_size,
                 colors[color_idx],
                 mode=ii.mode,
-                overlay=ii.overlay,
             )
 
     if e.type == "mouseup":
@@ -641,7 +598,6 @@ def mouse_handler(e: events.MouseEventArguments):
             ii.is_drawing = False
             annotator.apply_current_path()
             redraw()
-            # run_suggestor() # comment out since suggestor is now our main focus now.
 
     ii.x = e.image_x
     ii.y = e.image_y
@@ -698,64 +654,34 @@ def update_annotation_opacity(e):
     redraw()
 
 
-def update_overlay_opacity(e):
-    global annotator
-    ii.overlay_opacity = e.value / 100
-    redraw()
-
-
-def update_display_info():
-    if ii.overlay_opacity == 0:
-        ui_display_info.set_content("No overlay displayed")
-    else:
-        if ii.overlay == "live_suggestions":
-            ui_display_info.set_content("Displaying live suggestions")
-        elif ii.overlay == "model_predictions":
-            ui_display_info.set_content("Displaying model predictions")
-
-
 def update_annotator_info():
     global annotator, dataset
 
     annotator.set_image(np.repeat(image_slice[:, :, None], 3, axis=2))
 
-    # --- new block starts here ---
-    # grab the current rot_vec from the slicer
+    # With no volumes loaded the slice is a blank placeholder, and there is no
+    # slicer geometry to report. Say so plainly rather than leaving a black canvas.
+    if len(dataset) == 0:
+        ui_volume_name_label.set_text(
+            "No volumes found in data/image_volumes/ — add 3-D .npy volumes and restart"
+        )
+        ui_origin_label.set_text("")
+        ui_rotation_label.set_text("")
+        return
+
     volume_name = dataset[volume_index].filename
     origin = dataset[volume_index].slicer.origin
     rot = np.round(dataset[volume_index].slicer.rot_vec, 2)
-    # update the UI label
+
     ui_volume_name_label.set_text(f"Volume: {volume_name}")
     ui_origin_label.set_text(
         f"Origin: ({origin[0]:.0f}, {origin[1]:.0f}, {origin[2]:.0f})"
     )
     ui_rotation_label.set_text(f"Rotation vector: {rot.tolist()}")
-    # --- new block ends here ---
 
     ui_volume_picker.set_value(dataset[volume_index].filename)
 
 
-def cycle_overlay():
-    global annotator
-
-    keys = np.array(list(annotator.overlays.keys()))
-    next_idx = np.argwhere(keys == ii.overlay)[0, 0] + 1
-    ii.overlay = keys[next_idx % len(keys)]
-
-    update_display_info()
-    redraw()
-
-
-def toggle_overlay():
-    global annotator
-    if ii.overlay_opacity > 0:
-        ii.overlay_opacity = 0
-        ui_slider_overlay_opacity.value = int(ii.overlay_opacity * 100)
-    elif ii.overlay_opacity == 0:
-        ii.overlay_opacity = 0.25
-        ui_slider_overlay_opacity.value = int(ii.overlay_opacity * 100)
-    update_display_info()
-    redraw()
 
 
 def update_num_classes(e):
@@ -818,44 +744,19 @@ def update_volume(e):
     origin_section.refresh()
 
 
-def update_training_plot():
-    global metric, fig
-    metric = ui_select_plot_metric.value
-    fig = utils.get_training_history_figure(metric)
-    ui_plotly_training_plot.figure = fig
-    ui_plotly_training_plot.update()
-
-
 def defocus():
     ui_select_input_size.run_method("blur")
     ui_select_num_classes.run_method("blur")
-
-    ui_select_architecture.run_method("blur")
-    ui_select_encoder.run_method("blur")
-    ui_checkbox_pretrained.run_method("blur")
-
-    ui_select_lr.run_method("blur")
-    ui_select_batch_size.run_method("blur")
-    ui_select_num_epochs.run_method("blur")
-    ui_select_loss_function.run_method("blur")
 
     ui_select_sampling_mode.run_method("blur")
     ui_select_sampling_axis.run_method("blur")
 
     ui_slider_cursor_opacity.run_method("blur")
     ui_slider_annotation_opacity.run_method("blur")
-    ui_slider_overlay_opacity.run_method("blur")
 
-    ui_button_clear_model.run_method("blur")
     ui_button_clear_annotations.run_method("blur")
     ui_button_reset_all.run_method("blur")
 
-    ui_button_predict.run_method("blur")
-
-    ui_button_build_annotation_volumes.run_method("blur")
-    ui_button_train.run_method("blur")
-    ui_select_plot_metric.run_method("blur")
-    ui_plotly_training_plot.run_method("blur")
 
 
 async def clear_annotations(e):
@@ -874,23 +775,10 @@ async def clear_annotations(e):
     ui_select_num_classes.enable()
 
 
-async def clear_model():
-
-    confirmation_label.text = "This will reset the model weights and erase all training progress. Are you sure you want to do this?"
-
-    result = await dialog
-    if result == "Yes":
-        utils.clear_model()
-
-    ui_select_architecture.enable()
-    ui_select_encoder.enable()
-    ui_checkbox_pretrained.enable()
-
-
 async def reset_all():
     global train_samples
 
-    confirmation_label.text = "This will erase all training progress and delete all saved annotations. Are you sure you want to do this?"
+    confirmation_label.text = "This will delete all saved annotations. Are you sure you want to do this?"
 
     result = await dialog
     if result == "Yes":
@@ -899,145 +787,6 @@ async def reset_all():
     train_samples = glob.glob("data/train/images/*.tiff")
     ui_select_input_size.enable()
     ui_select_num_classes.enable()
-    ui_select_architecture.enable()
-    ui_select_encoder.enable()
-    ui_checkbox_pretrained.enable()
-
-
-def build_annotation_volumes():
-    utils.build_annotation_volumes(dataset)
-    ui.notify("Finished rebuilding annotation volumes.")
-
-
-async def train_model():
-    global training
-
-    # Not necessary, 3D U-Net models not implemented yet
-    # utils.build_annotation_volumes(dataset)
-
-    kwargs = {
-        "lr": ui_select_lr.value,
-        "batch_size": ui_select_batch_size.value,
-        "epochs": ui_select_num_epochs.value,
-        "num_channels": 1,
-        "num_classes": num_classes,
-        "loss_function_name": ui_select_loss_function.value,
-        "architecture": ui_select_architecture.value,
-        "encoder_name": ui_select_encoder.value,
-        "pretrained": ui_checkbox_pretrained.value,
-    }
-
-    with open("model/model_details.pkl", "wb") as f:
-        pickle.dump(kwargs, f)
-
-    ui_select_architecture.disable()
-    ui_select_encoder.disable()
-    ui_checkbox_pretrained.disable()
-
-    training = True
-
-    ui_button_train.disable()
-    ui_button_predict_volumes.disable()
-
-    result = await run.cpu_bound(trainer.train_model, *list(kwargs.values()))
-
-    ui_button_train.enable()
-    ui_button_predict_volumes.enable()
-
-    training = False
-
-
-def predict_slice():
-
-    def predict_slice_function():
-        global annotator, predicting
-
-        annotator.overlays["model_predictions"] = predict.predict_slice(
-            image_slice, num_classes=num_classes
-        )
-        ii.overlay = "model_predictions"
-        update_display_info()
-
-        ii.overlay_opacity = 0.25
-        ui_slider_overlay_opacity.value = int(ii.overlay_opacity * 100)
-
-        redraw()
-
-    predict_slice_thread = threading.Thread(target=predict_slice_function)
-    predict_slice_thread.start()
-
-
-async def predict_volumes():
-    global predicting
-
-    ui_button_train.disable()
-    ui_button_predict_volumes.disable()
-
-    result = await run.cpu_bound(
-        predict.predict_volumes, input_size=input_size, num_classes=num_classes
-    )
-
-    ui_button_train.enable()
-    ui_button_predict_volumes.enable()
-
-    predicting = False
-
-
-def extract_features():
-    global extracting
-
-    extracting = True
-
-    image = (image_slice / 255.0).astype("float32")
-
-    ii.image_features["features"] = image[None, None]
-
-    extracting = False
-
-
-def run_suggestor():
-    global suggesting, extracting
-
-    if ii.image_features["features"] is None:
-        if not extracting:
-            feature_extractor_thread = threading.Thread(target=extract_features)
-            feature_extractor_thread.start()
-
-    if ii.image_features["features"] is not None:
-
-        if not extracting:
-
-            def suggestor_function():
-                global annotator, suggesting
-
-                suggesting = True
-
-                if ii.suggestor_model is None:
-                    suggestions, suggestor_model = suggestor.make_suggestions(
-                        ii.image_features["features"], annotator.mask
-                    )
-                else:
-                    suggestions, suggestor_model = suggestor.make_suggestions(
-                        ii.image_features["features"],
-                        annotator.mask,
-                        model=ii.suggestor_model,
-                    )
-
-                if suggestions is not None:
-
-                    annotator.overlays["live_suggestions"] = suggestions
-                    ii.overlay = "live_suggestions"
-                    update_display_info()
-
-                    ii.suggestor_model = suggestor_model
-
-                    redraw()
-
-                suggesting = False
-
-            if not suggesting:
-                suggestor_thread = threading.Thread(target=suggestor_function)
-                suggestor_thread.start()
 
 
 def check_volume_folder():
@@ -1053,14 +802,16 @@ def check_volume_folder():
         randomize()
 
 
-ui.page_title("Interactive Segmentation")
+ui.page_title("Foram Annotator")
 with ui.column(align_items="center").classes("w-full justify-center"):
 
-    ui.markdown("#### **Interactive Segmentation Tool**")
+    ui.markdown("#### **Foram Annotator**")
 
-    with ui.row().classes("w-full justify-center"):
+    # Two-column layout: controls on the left, annotation canvas on the right.
+    with ui.row().classes("w-full justify-center items-start no-wrap gap-6"):
 
-        with ui.column().classes("w-1/4"):
+        # ── Left column: controls ──
+        with ui.column().classes("w-1/4 min-w-[320px] max-w-[420px] shrink-0"):
 
             with ui.scroll_area().classes(
                 "w-full h-[calc(100vh-8rem)] justify-center no-wrap"
@@ -1127,110 +878,6 @@ with ui.column(align_items="center").classes("w-full justify-center"):
                     if len(train_samples) > 0:
                         ui_select_input_size.disable()
                         ui_select_num_classes.disable()
-
-                with ui.expansion(text="Model settings").props("dense filled").classes(
-                    "w-full"
-                ):
-
-                    ui_select_architecture = (
-                        ui.select(
-                            [
-                                "U-Net",
-                                "U-Net++",
-                                "FPN",
-                                "PSPNet",
-                                "DeepLabV3",
-                                "DeepLabV3+",
-                                "LinkNet",
-                                "MA-Net",
-                                "PAN",
-                                "UPerNet",
-                                "Segformer",
-                            ],
-                            value="U-Net",
-                            label="Architecture",
-                        )
-                        .props("filled")
-                        .classes("w-full")
-                    )
-
-                    with ui.row(align_items="center").classes(
-                        "w-full justify-center no-wrap"
-                    ):
-
-                        ui_select_encoder = (
-                            ui.select(
-                                smp.encoders.get_encoder_names(),
-                                value="mit_b0",
-                                label="U-Net Encoder",
-                            )
-                            .props("filled")
-                            .classes("w-3/4")
-                        )
-                        ui_checkbox_pretrained = ui.checkbox(
-                            "Pretrained", value=True
-                        ).classes("w-1/4")
-
-                        if os.path.isfile("model/model.ckpt"):
-
-                            with open("model/model_details.pkl", "rb") as f:
-                                model_details = pickle.load(f)
-                                ui_select_architecture.value = model_details[
-                                    "architecture"
-                                ]
-                                ui_select_encoder.value = model_details["encoder_name"]
-                                ui_checkbox_pretrained.value = model_details[
-                                    "pretrained"
-                                ]
-
-                            ui_select_architecture.disable()
-                            ui_select_encoder.disable()
-                            ui_checkbox_pretrained.disable()
-
-                with ui.expansion(text="Training settings").props("dense").classes(
-                    "w-full"
-                ):
-
-                    ui_select_lr = (
-                        ui.select(
-                            [0.00001, 0.0001, 0.001, 0.01],
-                            value=0.001,
-                            label="Learning rate",
-                        )
-                        .props("filled")
-                        .classes("w-full")
-                    )
-                    ui_select_batch_size = (
-                        ui.select([2, 4, 8, 16, 32], value=2, label="Batch size")
-                        .props("filled")
-                        .classes("w-full")
-                    )
-                    ui_select_num_epochs = (
-                        ui.select(
-                            [10, 20, 30, 40, 50, 60, 70, 80, 90, 100],
-                            value=100,
-                            label="Num epochs",
-                        )
-                        .props("filled")
-                        .classes("w-full")
-                    )
-                    ui_select_loss_function = (
-                        ui.select(
-                            [
-                                "Crossentropy (CE)",
-                                "Dice",
-                                "Intersection over Union (IoU)",
-                                "Matthews correlation coefficient (MCC)",
-                                "Dice + CE",
-                                "IoU + CE",
-                                "MCC + CE",
-                            ],
-                            value="MCC + CE",
-                            label="Loss function",
-                        )
-                        .props("filled")
-                        .classes("w-full")
-                    )
 
                 with ui.expansion(text="Sampler settings").props("dense").classes(
                     "w-full"
@@ -1379,33 +1026,15 @@ with ui.column(align_items="center").classes("w-full justify-center"):
                             on_change=update_annotation_opacity,
                         ).classes("w-1/2")
 
-                    with ui.row(align_items="center").classes(
-                        "w-full justify-center no-wrap"
-                    ):
-
-                        ui.markdown("Overlay opacity").classes("w-1/2")
-                        ui_slider_overlay_opacity = ui.slider(
-                            min=0, max=100, value=25, on_change=update_overlay_opacity
-                        ).classes("w-1/2")
-
                 with ui.expansion(text="Project settings").props("dense").classes(
                     "w-full"
                 ):
 
-                    with ui.row(align_items="center").classes(
-                        "w-full justify-center no-wrap"
-                    ):
-
-                        ui_button_clear_model = (
-                            ui.button("Reset model weights", on_click=clear_model)
-                            .props("filled")
-                            .classes("w-1/2")
-                        )
-                        ui_button_clear_annotations = (
-                            ui.button("Clear annotations", on_click=clear_annotations)
-                            .props("filled")
-                            .classes("w-1/2")
-                        )
+                    ui_button_clear_annotations = (
+                        ui.button("Clear annotations", on_click=clear_annotations)
+                        .props("filled")
+                        .classes("w-full")
+                    )
 
                     ui_button_reset_all = (
                         ui.button("Reset and clear all", on_click=reset_all)
@@ -1413,13 +1042,8 @@ with ui.column(align_items="center").classes("w-full justify-center"):
                         .classes("w-full")
                     )
 
-        with ui.column():
-
-            with ui.row(align_items="center").classes(
-                "bg-gray-100 w-full justify-center no-wrap"
-            ):
-                with ui.element("div").classes("justify-center"):
-                    ui_display_info = ui.markdown(f"No overlay displayed")
+        # ── Right column: annotation canvas ──
+        with ui.column(align_items="center").classes("grow items-center"):
 
             ii = ui.interactive_image(
                 on_mouse=mouse_handler,
@@ -1431,60 +1055,15 @@ with ui.column(align_items="center").classes("w-full justify-center"):
                 mouse_wheel_handler,
             )
 
-            # ─── Button row: Predict and Save Annotation ───
-            with ui.row().classes("w-full gap-4 justify-center flex-nowrap"):
-
-                ui_button_save = (
-                    ui.button("Save Annotation", on_click=save_annotation)
-                    .props("filled")
-                    .classes("w-1/2 py-2")
-                )
-
-                ui_button_predict = (
-                    ui.button("Predict", on_click=predict_slice)
-                    .props("filled")
-                    .classes("w-[50%]  py-2")
-                )
-
-        with ui.column().classes("w-1/4"):
-
-            ui_select_plot_metric = (
-                ui.select(
-                    ["Loss", "Dice", "IoU", "MCC"],
-                    value="Loss",
-                    label="Plot metric",
-                    on_change=update_training_plot,
-                )
+            ui_button_save = (
+                ui.button("Save Annotation", on_click=save_annotation)
                 .props("filled")
-                .classes("w-full")
+                .classes("py-2")
+                .style(f"width: {canvas_size}px")
             )
-
-            ui_plotly_training_plot = ui.plotly(fig).classes("w-full h-96")
-
-            ui_button_train = (
-                ui.button("Train", on_click=train_model)
-                .props("filled")
-                .classes("w-full")
-            )
-
-            ui_button_predict_volumes = (
-                ui.button("Predict volumes", on_click=predict_volumes)
-                .props("filled")
-                .classes("w-full")
-            )
-
-            with ui.expansion(text="Other tools").props("dense").classes("w-full"):
-                ui_button_build_annotation_volumes = (
-                    ui.button(
-                        "Rebuild annotation volumes", on_click=build_annotation_volumes
-                    )
-                    .props("filled")
-                    .classes("w-full")
-                )
 
 
 volume_timer = ui.timer(2.0, callback=check_volume_folder)
-plot_timer = ui.timer(2.0, callback=update_training_plot)
 redraw_timer = ui.timer(0.2, callback=redraw_check)
 defocus_timer = ui.timer(1.0, callback=defocus)
 
@@ -1507,5 +1086,5 @@ randomize()
 
 ui.run(
     port=9546,
-    uvicorn_reload_dirs="interactive_unet",
+    uvicorn_reload_dirs="foram_annotator",
 )
