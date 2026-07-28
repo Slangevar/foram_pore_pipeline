@@ -46,6 +46,7 @@ MOVE_DT = 1.0 / MOVE_HZ
 # Canvas resolution used for the reduced-quality redraw while panning.
 FAST_REDRAW_SIZE = 325
 last_move_time = 0.0
+last_zoom_time = 0.0
 drag_ref_x = None
 drag_ref_y = None
 
@@ -655,12 +656,17 @@ def mouse_wheel_handler(e: GenericEventArguments):
 
     # Zoom in and out.
     #
-    # Deliberately does NOT set `interacting`: that switches redraw() to a
-    # heavily downsampled preview, which on a wheel step reads as the slice
-    # blanking out and then returning when the 0.2 s timer restores full
-    # resolution. A full-resolution redraw costs about 21 ms, so zoom can
-    # simply render properly the first time.
+    # A touchpad gesture emits a burst of wheel events. Applying the zoom is
+    # cheap, but redrawing sends a full canvas image to the browser, so doing
+    # that per event floods the socket connection and the client falls behind.
+    # The zoom itself is therefore applied on every event, while the redraw is
+    # throttled to MOVE_HZ, the same rate used for drag-panning. Clearing
+    # `updated` leaves redraw_timer to render the final position.
+    #
+    # `interacting` is deliberately not set: that switches redraw() to a
+    # heavily downsampled preview, which reads as the slice blanking out.
     if e.args["shiftKey"] and not e.args["ctrlKey"] and not e.args["altKey"]:
+        global last_zoom_time, updated
 
         delta_y = e.args["deltaY"]
         mouse_x = e.args["offsetX"]
@@ -668,11 +674,18 @@ def mouse_wheel_handler(e: GenericEventArguments):
 
         if delta_y < 0:
             annotator.zoom_in(mouse_x, mouse_y)
-            redraw()
-
         elif delta_y > 0:
             annotator.zoom_out(mouse_x, mouse_y)
+        else:
+            return
+
+        now = time.perf_counter()
+        if (now - last_zoom_time) >= MOVE_DT:
+            last_zoom_time = now
+            updated = True
             redraw()
+        else:
+            updated = False
 
 
 def update_cursor_opacity(e):
