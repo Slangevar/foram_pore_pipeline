@@ -22,6 +22,12 @@ pandas
 porespy           # local thickness, pore-network metrics
 openpyxl          # .xlsx export from the quantification notebooks
 
+# ── Annotation tool (annotation/) ────────────────────────────────────────────
+# The annotator itself needs no torch: only these two on top of numpy, scipy,
+# scikit-image and Pillow above.
+nicegui           # web UI framework serving the annotator
+opencv-python     # brush rasterisation onto the mask
+
 # ── Visualisation & logging ──────────────────────────────────────────────────
 matplotlib
 plotly

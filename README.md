@@ -50,7 +50,7 @@ scripts/analysis/
 notebooks/                               Quantification notebooks (see docs/)
 docs/                                    Data format, editor manual, quantification notes
 data/                                    Training slices + results (see Data below)
-annotation/                              Annotation interface (to be added)
+annotation/                              Slice annotation interface (produced data/train/)
 ```
 
 ---
@@ -197,7 +197,16 @@ Pores are thin, sparse and ambiguous at CT resolution, so the loss is deliberate
 
 ## Annotation interface
 
-The annotation tool used to produce `data/train/` and `data/val/` is maintained separately and will be added under [`annotation/`](annotation/).
+The browser-based tool that produced the annotated slices in `data/train/` and `data/val/` lives in [`annotation/`](annotation/). It cuts arbitrarily-oriented 2-D slices from the 3-D volumes and writes the image/mask/weight triples that `src/loader.py` consumes.
+
+```bash
+# from a working directory containing data/image_volumes/*.npy
+python annotation/app.py
+```
+
+Open <http://localhost:9546>. Paint each class with the brush and leave anything ambiguous unpainted — those pixels are excluded from the loss via the weight map, and roughly a third of the current dataset is deliberately left unannotated. See [`annotation/README.md`](annotation/README.md) for controls and output format.
+
+Adapted from the upstream `interactive_unet` tool with its model training, inference and live-suggestion code removed, since `src/` already provides that; the annotator therefore needs no `torch`.
 
 ---
 

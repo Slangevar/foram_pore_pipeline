@@ -13,11 +13,16 @@ tool alone, with no `torch` dependency.
 ## Install and run
 
 ```bash
-pip install -r annotation/requirements.txt
+pip install -r requirements.txt
 
 # from a working directory containing data/image_volumes/*.npy
-python annotation/foram_annotator/app.py
+python annotation/app.py
 ```
+
+The annotator itself needs only `nicegui`, `opencv-python`, `numpy`, `scipy`,
+`scikit-image` and `Pillow` — no `torch`. Those are listed in the repository's
+single `requirements.txt`, which also covers the training and analysis code, so
+installing it pulls more than the annotator strictly needs.
 
 Open <http://localhost:9546>.
 

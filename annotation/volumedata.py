@@ -1,7 +1,7 @@
 import numpy as np
 from pathlib import Path
 
-from foram_annotator.slicer import Slicer
+from slicer import Slicer
 
 """
 A VolumeData object pairs a 3-D image volume with the Slicer that cuts

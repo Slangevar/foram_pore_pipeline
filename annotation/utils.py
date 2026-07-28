@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 from skimage.io import imsave, imread
 
-from foram_annotator import volumedata
+import volumedata
 
 
 # Brush palette. The index is the BRUSH NUMBER in the UI, not the training

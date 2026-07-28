@@ -1,5 +1,4 @@
 import os
-import sys
 import cv2
 import glob
 import time
@@ -7,18 +6,14 @@ import numpy as np
 import json
 from PIL import Image
 
-# Allow launching as a plain script (python annotation/foram_annotator/app.py)
-# by putting the package's parent directory on the path, the same way the
-# entry points in src/cli/ do.
-package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if package_root not in sys.path:
-    sys.path.append(package_root)
-
 from nicegui import ui, events
 from nicegui.events import KeyEventArguments
 
-from foram_annotator.annotator import Annotator
-from foram_annotator import utils
+# Sibling modules. Launching this file as a script puts its own directory on
+# sys.path, so these resolve without the tool having to be an installed
+# package -- which leaves the working directory free to be the data directory.
+from annotator import Annotator
+import utils
 
 MOVE_HZ = 20.0           # cap to ~20 updates/second
 MOVE_DT = 1.0 / MOVE_HZ
