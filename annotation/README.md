@@ -17,7 +17,22 @@ pip install -r requirements.txt
 
 # from a working directory containing data/image_volumes/*.npy
 python annotation/app.py
+
+# or point it at the data directory from anywhere, on a port of your choosing
+python annotation/app.py --data-dir /path/to/project --port 9600
 ```
+
+| Option | Default | Purpose |
+|---|---|---|
+| `--port` | `9546` | Serving port. Change it if the default is taken, or to run several annotators at once. |
+| `--host` | `127.0.0.1` | Interface to bind. Localhost-only by default. |
+| `--data-dir` | `.` | Directory holding `data/image_volumes/`; annotations are written to `data/train/` beneath it. |
+
+The default binds to localhost only, so reach it through an SSH tunnel
+(`ssh -N -L 9546:localhost:9546 <user>@<host>`) or your editor's port
+forwarding. `--host 0.0.0.0` exposes it on the network — the tool is
+unauthenticated and writes files, so avoid that on a machine with a public
+address.
 
 The annotator itself needs only `nicegui`, `opencv-python`, `numpy`, `scipy`,
 `scikit-image` and `Pillow` — no `torch`. Those are listed in the repository's

@@ -202,9 +202,12 @@ The browser-based tool that produced the annotated slices in `data/train/` and `
 ```bash
 # from a working directory containing data/image_volumes/*.npy
 python annotation/app.py
+
+# or point it elsewhere: --data-dir, --port and --host are all configurable
+python annotation/app.py --data-dir /path/to/project --port 9600
 ```
 
-Open <http://localhost:9546>. Paint each class with the brush and leave anything ambiguous unpainted — those pixels are excluded from the loss via the weight map, and roughly a third of the current dataset is deliberately left unannotated. See [`annotation/README.md`](annotation/README.md) for controls and output format.
+Open <http://localhost:9546>. It binds to localhost only, so reach it over an SSH tunnel or your editor's port forwarding. Paint each class with the brush and leave anything ambiguous unpainted — those pixels are excluded from the loss via the weight map, and roughly a third of the current dataset is deliberately left unannotated. See [`annotation/README.md`](annotation/README.md) for controls and output format.
 
 Adapted from the upstream `interactive_unet` tool with its model training, inference and live-suggestion code removed, since `src/` already provides that; the annotator therefore needs no `torch`.
 

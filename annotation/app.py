@@ -2,6 +2,7 @@ import os
 import cv2
 import glob
 import time
+import argparse
 import numpy as np
 import json
 from PIL import Image
@@ -14,6 +15,32 @@ from nicegui.events import KeyEventArguments
 # package -- which leaves the working directory free to be the data directory.
 from annotator import Annotator
 import utils
+
+parser = argparse.ArgumentParser(
+    description="Annotate 2-D slices cut from 3-D micro-CT volumes.",
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+)
+parser.add_argument(
+    "--port", type=int, default=9546,
+    help="Port to serve the interface on. Change this if the default is taken, "
+         "or to run more than one annotator at once.",
+)
+parser.add_argument(
+    "--host", default="127.0.0.1",
+    help="Interface to bind. The default is localhost-only; reach it over an "
+         "SSH tunnel or your editor's port forwarding. Use 0.0.0.0 to expose "
+         "it on the network, but note the tool is unauthenticated and writes "
+         "files, so do not do that on a machine with a public address.",
+)
+parser.add_argument(
+    "--data-dir", default=".",
+    help="Directory holding data/image_volumes/; annotations are written to "
+         "data/train/ beneath it. Defaults to the working directory.",
+)
+cli_args = parser.parse_args()
+
+if cli_args.data_dir != ".":
+    os.chdir(cli_args.data_dir)
 
 MOVE_HZ = 20.0           # cap to ~20 updates/second
 MOVE_DT = 1.0 / MOVE_HZ
@@ -1072,6 +1099,10 @@ with ui.dialog() as dialog, ui.card():
 
 randomize()
 
+# Host and port come from --host/--port; the default binds localhost only,
+# because nicegui's own default of 0.0.0.0 would publish this tool -- which is
+# unauthenticated and writes files -- on a login node's public interface.
+#
 # reload=False matters: with nicegui's default (reload=True) the module is
 # re-executed in a worker subprocess, so the module-level setup above --
 # create_directories(), load_dataset() and randomize() -- runs twice, and the
@@ -1079,7 +1110,8 @@ randomize()
 # package. show=False keeps it headless-safe on a compute/login node, where
 # there is no browser to open; the URL is printed on startup either way.
 ui.run(
-    port=9546,
+    host=cli_args.host,
+    port=cli_args.port,
     reload=False,
     show=False,
 )
