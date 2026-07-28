@@ -101,6 +101,11 @@ interacting = False
 updated = True
 last_interaction = time.time()
 
+# False until the UI has been built and ui.run() is about to start the event
+# loop. Handlers that schedule background work (refresh(), run_javascript())
+# must not do so before then; see update_volume().
+ui_ready = False
+
 ui.add_head_html("<style>body { zoom: 1.00; }</style>", shared=True)
 
 ui.add_body_html(
@@ -760,22 +765,12 @@ def update_volume(e):
     if ui_volume_picker.value is not None:
         volume_index = filenames.index(ui_volume_picker.value)
 
-    origin_section.refresh()
-
-
-def defocus():
-    ui_select_input_size.run_method("blur")
-    ui_select_num_classes.run_method("blur")
-
-    ui_select_sampling_mode.run_method("blur")
-    ui_select_sampling_axis.run_method("blur")
-
-    ui_slider_cursor_opacity.run_method("blur")
-    ui_slider_annotation_opacity.run_method("blur")
-
-    ui_button_clear_annotations.run_method("blur")
-    ui_button_reset_all.run_method("blur")
-
+    # Skipped while the UI is still being constructed: this handler fires from
+    # set_value() in update_annotator_info() before nicegui's event loop
+    # exists, and refresh() schedules a background task, which asserts.
+    # origin_section() is rendered fresh during construction anyway.
+    if ui_ready:
+        origin_section.refresh()
 
 
 async def clear_annotations(e):
@@ -1084,7 +1079,6 @@ with ui.column(align_items="center").classes("w-full justify-center"):
 
 volume_timer = ui.timer(2.0, callback=check_volume_folder)
 redraw_timer = ui.timer(0.2, callback=redraw_check)
-defocus_timer = ui.timer(1.0, callback=defocus)
 
 keyboard = ui.keyboard(
     on_key=key_handler,
@@ -1109,6 +1103,8 @@ randomize()
 # reload watch path resolves against the working directory rather than the
 # package. show=False keeps it headless-safe on a compute/login node, where
 # there is no browser to open; the URL is printed on startup either way.
+ui_ready = True
+
 ui.run(
     host=cli_args.host,
     port=cli_args.port,
