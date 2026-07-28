@@ -141,7 +141,7 @@ ui.add_body_html(
 
 
 def randomize():
-    global dataset, volume_index, image_slice
+    global volume_index, image_slice
 
     if len(dataset) == 0:
         # Create blank slice if no volumes are provided
@@ -210,7 +210,7 @@ def origin_section():
 
 
 def update_custom_slice():
-    global nx, ny, nz, image_slice
+    global image_slice
     # 0) Safeguard
     raw_origin = [
         ui_input_origin_x.value,
@@ -315,7 +315,7 @@ def replicate_section():
 
 
 def load_replicate_config(idx):
-    global nx, ny, nz, image_slice, input_size, slice_idx
+    global image_slice, input_size, slice_idx
 
     slice_idx = int(idx)
     cfg_path = f"data/train/configs/{idx}.json"
@@ -348,7 +348,7 @@ def load_replicate_config(idx):
 
 
 def save_annotation():
-    global annotator, dataset, train_samples, color_idx, image_slice, slice_idx
+    global train_samples, slice_idx
 
     if (len(train_samples) == 0) and (annotator.get_num_unique_colors() != num_classes):
         ui.notify(
@@ -388,7 +388,7 @@ def save_annotation():
             replicate_section.refresh()
 
         ui.notify(
-            f"Annotation saved successfully!",
+            "Annotation saved successfully!",
             color="positive",
             position="top",
             timeout=1000,
@@ -436,7 +436,7 @@ def redraw_overlay():
 
 
 def clear():
-    global annotator, color_idx, interacting, updated
+    global color_idx, interacting, updated
 
     annotator.reset()
     color_idx = 1
@@ -459,7 +459,7 @@ def clear():
 
 
 def key_handler(e: KeyEventArguments):
-    global annotator, dataset, train_samples, color_idx, image_slice
+    global color_idx, image_slice
 
     if getattr(e, "target_tag", "").upper() in ("INPUT", "TEXTAREA", "SELECT"):
         return
@@ -521,7 +521,7 @@ def key_handler(e: KeyEventArguments):
 
 
 def mouse_handler(e: events.MouseEventArguments):
-    global annotator, interacting, color_idx, color_idx_prev
+    global interacting, color_idx, color_idx_prev
     global last_move_time, drag_ref_x, drag_ref_y
     if e.type == "mousedown" and e.button != 1:
         # 0 is left, 2 is right
@@ -606,7 +606,7 @@ def mouse_handler(e: events.MouseEventArguments):
 
 
 def mouse_wheel_handler(e: KeyEventArguments):
-    global annotator, interacting, updated
+    global interacting, updated
 
     # Adjust brush size
     if not e.args["shiftKey"] and not e.args["ctrlKey"] and not e.args["altKey"]:
@@ -643,19 +643,16 @@ def mouse_wheel_handler(e: KeyEventArguments):
 
 
 def update_cursor_opacity(e):
-    global annotator
     ii.cursor_opacity = e.value / 100
     redraw_overlay()
 
 
 def update_annotation_opacity(e):
-    global annotator
     ii.annotation_opacity = e.value / 100
     redraw()
 
 
 def update_annotator_info():
-    global annotator, dataset
 
     annotator.set_image(np.repeat(image_slice[:, :, None], 3, axis=2))
 
@@ -692,7 +689,7 @@ def update_num_classes(e):
 
 
 def update_input_size(e):
-    global annotator, input_size, image_slice
+    global input_size, image_slice
     input_size = ui_select_input_size.value
     image_slice = (
         dataset[volume_index].get_slice(slice_width=input_size, order=1).astype("uint8")
