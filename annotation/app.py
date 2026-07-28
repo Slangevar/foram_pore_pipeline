@@ -43,10 +43,13 @@ cli_args = parser.parse_args()
 MOVE_HZ = 20.0           # cap to ~20 updates/second
 MOVE_DT = 1.0 / MOVE_HZ
 
-# Canvas resolution used for the reduced-quality redraw while panning.
-FAST_REDRAW_SIZE = 325
+# Canvas resolution for the reduced-quality redraw used while panning and
+# zooming. Keep this small. Every redraw writes a PNG that the browser fetches
+# over HTTP, and the <img> is blank until that fetch returns: 60 px encodes to
+# under 7 KB and is imperceptible, 325 px to 48 KB and full resolution to
+# 119 KB, both slow enough to make the canvas visibly disappear mid-gesture.
+FAST_REDRAW_SIZE = 60
 last_move_time = 0.0
-last_zoom_time = 0.0
 drag_ref_x = None
 drag_ref_y = None
 
@@ -656,36 +659,32 @@ def mouse_wheel_handler(e: GenericEventArguments):
 
     # Zoom in and out.
     #
-    # A touchpad gesture emits a burst of wheel events. Applying the zoom is
-    # cheap, but redrawing sends a full canvas image to the browser, so doing
-    # that per event floods the socket connection and the client falls behind.
-    # The zoom itself is therefore applied on every event, while the redraw is
-    # throttled to MOVE_HZ, the same rate used for drag-panning. Clearing
-    # `updated` leaves redraw_timer to render the final position.
-    #
-    # `interacting` is deliberately not set: that switches redraw() to a
-    # heavily downsampled preview, which reads as the slice blanking out.
+    # `interacting` switches redraw() to the reduced-resolution preview, and
+    # that is what keeps zooming smooth. ui.image assigns a PIL image by
+    # writing a temporary file and pointing the browser at a new URL, so the
+    # <img> shows nothing until that fetch finishes. The preview encodes to a
+    # few KB and arrives immediately, whereas a full-resolution frame is about
+    # 119 KB and its fetch is slow enough to leave the canvas visibly blank.
+    # redraw_timer restores full resolution once the gesture stops.
     if e.args["shiftKey"] and not e.args["ctrlKey"] and not e.args["altKey"]:
-        global last_zoom_time, updated
+        global interacting, updated
 
         delta_y = e.args["deltaY"]
         mouse_x = e.args["offsetX"]
         mouse_y = e.args["offsetY"]
 
+        interacting = True
+        updated = False
+
         if delta_y < 0:
             annotator.zoom_in(mouse_x, mouse_y)
+            redraw()
+
         elif delta_y > 0:
             annotator.zoom_out(mouse_x, mouse_y)
-        else:
-            return
-
-        now = time.perf_counter()
-        if (now - last_zoom_time) >= MOVE_DT:
-            last_zoom_time = now
-            updated = True
             redraw()
-        else:
-            updated = False
+
+        interacting = False
 
 
 def update_cursor_opacity(e):
