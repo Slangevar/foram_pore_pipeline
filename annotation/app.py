@@ -1,7 +1,9 @@
 import os
+import io
 import cv2
 import glob
 import time
+import base64
 import argparse
 import numpy as np
 import json
@@ -437,24 +439,40 @@ def redraw_check():
         redraw()
 
 
+def to_data_uri(array):
+    """Encode a frame as an inline PNG data URI.
+
+    Assigning a PIL image to ui.interactive_image writes a temporary file and
+    sets the source to a fresh URL under /_nicegui/auto/static/, which the
+    browser then has to fetch. The <img> renders nothing until that request
+    returns, so every redraw blanks the canvas -- during a zoom gesture that
+    reads as the slice disappearing and coming back. A data URI travels inline
+    with the element update over the websocket that is already open, so the
+    frame is present the moment the browser applies it.
+    """
+
+    buffer = io.BytesIO()
+    Image.fromarray(array).save(buffer, format="PNG")
+
+    return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+
+
 def redraw():
 
     annotator.update_display(ii.annotation_opacity)
 
     if interacting:
-        # Reduced-resolution redraw, used while dragging to pan. At 60 px this
-        # was an eleven-fold upscale of the 650 px canvas and looked like the
-        # image had been replaced by coloured blocks; FAST_REDRAW_SIZE renders
-        # in about 5 ms, well inside the 50 ms drag throttle.
-        ii.source = Image.fromarray(
-            cv2.resize(
-                annotator.get_roi_image(size=FAST_REDRAW_SIZE),
-                (canvas_size, canvas_size),
-                interpolation=cv2.INTER_NEAREST,
-            )
+        # Reduced resolution while a gesture is in flight; redraw_timer renders
+        # the settled position at full resolution once it ends.
+        frame = cv2.resize(
+            annotator.get_roi_image(size=FAST_REDRAW_SIZE),
+            (canvas_size, canvas_size),
+            interpolation=cv2.INTER_NEAREST,
         )
     else:
-        ii.source = Image.fromarray(annotator.get_roi_image())
+        frame = annotator.get_roi_image()
+
+    ii.source = to_data_uri(frame)
 
     redraw_overlay()
 
