@@ -32,15 +32,13 @@ parser.add_argument(
          "it on the network, but note the tool is unauthenticated and writes "
          "files, so do not do that on a machine with a public address.",
 )
-parser.add_argument(
-    "--data-dir", default=".",
-    help="Directory holding data/image_volumes/; annotations are written to "
-         "data/train/ beneath it. Defaults to the working directory.",
-)
 cli_args = parser.parse_args()
 
-if cli_args.data_dir != ".":
-    os.chdir(cli_args.data_dir)
+# Data paths are resolved against the working directory: run this from the
+# directory holding data/image_volumes/. Do NOT add an option that chdirs --
+# nicegui re-executes this file via runpy.run_path(sys.argv[0]) on every page
+# request, so changing the working directory invalidates a relative sys.argv[0]
+# and the re-execution fails with "Script mode requires a valid script file".
 
 MOVE_HZ = 20.0           # cap to ~20 updates/second
 MOVE_DT = 1.0 / MOVE_HZ

@@ -14,9 +14,35 @@ class VolumeData(object):
     def __init__(self, file):
 
         self.filename = Path(file).stem
-        self.image_volume = np.load(f"data/image_volumes/{self.filename}.npy")
+        self.path = f"data/image_volumes/{self.filename}.npy"
 
-        self.slicer = Slicer(self.image_volume.shape)
+        self._image_volume = None
+        self.slicer = Slicer(self._peek_shape())
+
+    def _peek_shape(self):
+        """Read the volume's shape from the .npy header without loading data."""
+        header = np.load(self.path, mmap_mode="r")
+        shape = header.shape
+        del header
+        return shape
+
+    @property
+    def image_volume(self):
+        """The volume, memory-mapped and opened on first use.
+
+        Loading is deferred because the dataset holds every volume in the
+        folder, while a session slices only the ones actually selected. It is
+        also memory-mapped rather than read into RAM, so only the pages a slice
+        touches are faulted in.
+
+        Both halves matter because nicegui re-executes this program on every
+        page request. Constructing the dataset eagerly meant re-reading the
+        whole collection each time -- about 24 GB for the 123-volume set, none
+        of it released afterwards.
+        """
+        if self._image_volume is None:
+            self._image_volume = np.load(self.path, mmap_mode="r")
+        return self._image_volume
 
     # Slicer functions-----------------------------------------------------------------------------------------------------------------------
 
