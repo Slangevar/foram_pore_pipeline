@@ -8,7 +8,7 @@ import json
 from PIL import Image
 
 from nicegui import ui, events
-from nicegui.events import KeyEventArguments
+from nicegui.events import GenericEventArguments, KeyEventArguments
 
 # Sibling modules. Launching this file as a script puts its own directory on
 # sys.path, so these resolve without the tool having to be an installed
@@ -42,6 +42,9 @@ cli_args = parser.parse_args()
 
 MOVE_HZ = 20.0           # cap to ~20 updates/second
 MOVE_DT = 1.0 / MOVE_HZ
+
+# Canvas resolution used for the reduced-quality redraw while panning.
+FAST_REDRAW_SIZE = 325
 last_move_time = 0.0
 drag_ref_x = None
 drag_ref_y = None
@@ -435,10 +438,13 @@ def redraw():
     annotator.update_display(ii.annotation_opacity)
 
     if interacting:
-        # Fast redraw
+        # Reduced-resolution redraw, used while dragging to pan. At 60 px this
+        # was an eleven-fold upscale of the 650 px canvas and looked like the
+        # image had been replaced by coloured blocks; FAST_REDRAW_SIZE renders
+        # in about 5 ms, well inside the 50 ms drag throttle.
         ii.source = Image.fromarray(
             cv2.resize(
-                annotator.get_roi_image(size=60),
+                annotator.get_roi_image(size=FAST_REDRAW_SIZE),
                 (canvas_size, canvas_size),
                 interpolation=cv2.INTER_NEAREST,
             )
@@ -630,8 +636,9 @@ def mouse_handler(e: events.MouseEventArguments):
     redraw_overlay()
 
 
-def mouse_wheel_handler(e: KeyEventArguments):
-    global interacting, updated
+def mouse_wheel_handler(e: GenericEventArguments):
+    # Registered via ii.on("wheel.prevent.stop"), so this receives the raw DOM
+    # WheelEvent in e.args -- not a KeyEventArguments, which has no .args.
 
     # Adjust brush size
     if not e.args["shiftKey"] and not e.args["ctrlKey"] and not e.args["altKey"]:
@@ -646,15 +653,18 @@ def mouse_wheel_handler(e: KeyEventArguments):
             ii.brush_size = max(5.0, ii.brush_size * (1 / 1.033))
             redraw_overlay()
 
-    # Zoom in and out
+    # Zoom in and out.
+    #
+    # Deliberately does NOT set `interacting`: that switches redraw() to a
+    # heavily downsampled preview, which on a wheel step reads as the slice
+    # blanking out and then returning when the 0.2 s timer restores full
+    # resolution. A full-resolution redraw costs about 21 ms, so zoom can
+    # simply render properly the first time.
     if e.args["shiftKey"] and not e.args["ctrlKey"] and not e.args["altKey"]:
 
         delta_y = e.args["deltaY"]
         mouse_x = e.args["offsetX"]
         mouse_y = e.args["offsetY"]
-
-        interacting = True
-        updated = False
 
         if delta_y < 0:
             annotator.zoom_in(mouse_x, mouse_y)
@@ -663,8 +673,6 @@ def mouse_wheel_handler(e: KeyEventArguments):
         elif delta_y > 0:
             annotator.zoom_out(mouse_x, mouse_y)
             redraw()
-
-        interacting = False
 
 
 def update_cursor_opacity(e):

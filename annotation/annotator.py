@@ -5,6 +5,11 @@ from scipy.ndimage import map_coordinates
 
 class Annotator(object):
 
+    # Bounds on the zoom level, as a fraction of the slice shown in the canvas.
+    # 1.0 is the whole slice; smaller is zoomed further in.
+    MAX_SCALE = 1.0
+    MIN_SCALE = 0.02
+
     def __init__(self, canvas_size):
 
         self.canvas_size = canvas_size
@@ -103,11 +108,19 @@ class Annotator(object):
                 color = color.split("(")[-1].split(")")[0].split(",")
                 color = (int(color[0]), int(color[1]), int(color[2]))
 
-                cv2.circle(self.mask, (x0, y0), int(brush_size / 2), color, -1)
-                cv2.line(self.mask, (x0, y0), (x1, y1), color, int(brush_size))
+                # At least one pixel wide. The stored brush size is relative to
+                # the zoom level, so a small brush at high zoom rounds down to
+                # zero image pixels, and OpenCV rejects a zero thickness. That
+                # aborts the stroke and, because rebuild_mask() replays every
+                # stored path, keeps failing on every later redraw.
+                radius = max(1, int(brush_size / 2))
+                thickness = max(1, int(brush_size))
+
+                cv2.circle(self.mask, (x0, y0), radius, color, -1)
+                cv2.line(self.mask, (x0, y0), (x1, y1), color, thickness)
 
                 if j == len(path) - 1:
-                    cv2.circle(self.mask, (x1, y1), int(brush_size / 2), color, -1)
+                    cv2.circle(self.mask, (x1, y1), radius, color, -1)
 
     def update_display(self, annotation_opacity=0.25):
 
@@ -133,7 +146,7 @@ class Annotator(object):
 
             for j in range(len(path)):
 
-                _, _, _, _, _, color, _, _ = path[j]
+                _, _, _, _, _, color, _ = path[j]
                 colors.append(color)
 
         return len(np.unique(colors).ravel())
@@ -173,6 +186,27 @@ class Annotator(object):
 
         return roi_mouse_x, roi_mouse_y
 
+    def _clamp_roi(self):
+        """
+        Keep the view inside the slice.
+
+        get_roi_image() samples with map_coordinates(), which fills anything
+        outside the image with zeros. An unconstrained ROI therefore renders
+        black, and the slice appears to vanish.
+        """
+
+        for axis in (0, 1):
+            start, end = self.roi[axis], self.roi[axis + 2]
+            span = end - start
+
+            if span >= 1.0:
+                start = (1.0 - span) / 2        # whole slice visible: centre it
+            else:
+                start = min(max(start, 0.0), 1.0 - span)
+
+            self.roi[axis] = start
+            self.roi[axis + 2] = start + span
+
     def translate(self, x0, y0, x1, y1):
 
         translate_x = -self.scale * (x1 - x0) / self.canvas_size
@@ -180,16 +214,29 @@ class Annotator(object):
 
         self.roi += np.array([translate_x, translate_y, translate_x, translate_y])
 
-    def zoom_in(self, mouse_x, mouse_y):
+        self._clamp_roi()
 
-        # Center point in roi space
+    def _zoom(self, mouse_x, mouse_y, factor):
+        """
+        Zoom about the cursor by `factor`, holding the point under it fixed.
+
+        The scale is clamped: MAX_SCALE stops zooming out past the full slice,
+        beyond which the view is mostly off-image and renders black, and
+        MIN_SCALE caps how far in it can go. Without these, one touchpad
+        gesture -- which emits a burst of wheel events, each a zoom step --
+        runs the scale away and the slice appears to disappear.
+        """
+
+        new_scale = float(np.clip(self.scale * factor, self.MIN_SCALE, self.MAX_SCALE))
+
+        if new_scale == self.scale:
+            return
+
+        # Centre and cursor position in roi space, before the scale changes
         roi_center_x, roi_center_y = self.get_roi_center_pos()
-
-        # Mouse coordinates in roi space
         roi_mouse_x, roi_mouse_y = self.get_roi_mouse_pos(mouse_x, mouse_y)
 
-        # Update ROI
-        self.scale = self.scale * (1 / self.scale_factor)
+        self.scale = new_scale
         roi_start_x = roi_center_x - self.scale / 2
         roi_start_y = roi_center_y - self.scale / 2
         self.roi = np.array(
@@ -201,46 +248,19 @@ class Annotator(object):
             ]
         )
 
-        # Mouse coordinates in updated roi space
+        # Shift so the point under the cursor stays under the cursor
         new_roi_mouse_x, new_roi_mouse_y = self.get_roi_mouse_pos(mouse_x, mouse_y)
-
-        # Distance from mouse coordinates to center point in roi space
         roi_shift_x = roi_mouse_x - new_roi_mouse_x
         roi_shift_y = roi_mouse_y - new_roi_mouse_y
-
-        # Shift roi
         self.roi += np.array([roi_shift_x, roi_shift_y, roi_shift_x, roi_shift_y])
+
+        self._clamp_roi()
+
+    def zoom_in(self, mouse_x, mouse_y):
+        self._zoom(mouse_x, mouse_y, 1 / self.scale_factor)
 
     def zoom_out(self, mouse_x, mouse_y):
-
-        # Center point in roi space
-        roi_center_x, roi_center_y = self.get_roi_center_pos()
-
-        # Mouse coordinates in roi space
-        roi_mouse_x, roi_mouse_y = self.get_roi_mouse_pos(mouse_x, mouse_y)
-
-        # Update ROI
-        self.scale = self.scale * self.scale_factor
-        roi_start_x = roi_center_x - self.scale / 2
-        roi_start_y = roi_center_y - self.scale / 2
-        self.roi = np.array(
-            [
-                roi_start_x,
-                roi_start_y,
-                roi_start_x + self.scale,
-                roi_start_y + self.scale,
-            ]
-        )
-
-        # Mouse coordinates in updated roi space
-        new_roi_mouse_x, new_roi_mouse_y = self.get_roi_mouse_pos(mouse_x, mouse_y)
-
-        # Distance from mouse coordinates to center point in roi space
-        roi_shift_x = roi_mouse_x - new_roi_mouse_x
-        roi_shift_y = roi_mouse_y - new_roi_mouse_y
-
-        # Shift roi
-        self.roi += np.array([roi_shift_x, roi_shift_y, roi_shift_x, roi_shift_y])
+        self._zoom(mouse_x, mouse_y, self.scale_factor)
 
     def get_roi_image(self, size=None):
         """
