@@ -10,7 +10,7 @@ Accepted at **ECCV 2026 Workshop CVNH**. This repository contains the whole work
 - [Repository layout](#repository-layout)
 - [Installation](#installation)
 - [Data formats](#data-formats) — [what ships here](#what-ships-in-this-repository) · [slice annotations](#slice-annotations--rgb-encoding) · [volume labels](#volume-labels--integer-encoding) · [editor state](#editor-state-files) · [large data](#large-data-distributed-separately)
-- [Running the pipeline](#running-the-pipeline) — [0 annotation](#stage-0--annotation) · [1 segmentation](#stage-1--segmentation) · [2–6 post-analysis](#stages-26--automated-post-analysis) · [7 correction](#stage-7--manual-correction) · [8 quantification](#stage-8--quantification)
+- [Running the pipeline](#running-the-pipeline) — [0 annotation](#stage-0--annotation) · [1a training](#stage-1a--training) · [1b prediction](#stage-1b--prediction) · [2–6 post-analysis](#stages-26--automated-post-analysis) · [7 correction](#stage-7--manual-correction) · [8 quantification](#stage-8--quantification)
 - [The segmentation model](#the-segmentation-model)
 - [Citation and sources](#citation)
 
@@ -22,8 +22,10 @@ Accepted at **ECCV 2026 Workshop CVNH**. This repository contains the whole work
 flowchart TD
     V["Raw micro-CT volume<br/>(.npy)"] --> A["<b>0. Annotation</b><br/>browser tool, arbitrarily-oriented slices<br/><code>annotation/</code>"]
     A --> TD["Annotated slices<br/><code>data/train/</code>, <code>data/val/</code>"]
-    TD --> B
-    V --> B["<b>1. Segmentation</b><br/>U-Net / MiT-B0<br/>12-view TTA + sliding window"]
+    TD --> T["<b>1a. Training</b><br/>multi-planar U-Net, MiT-B0 encoder<br/>class-wise Tversky loss"]
+    T --> CK["Trained checkpoint"]
+    CK --> B["<b>1b. Prediction</b><br/>12-view test-time augmentation<br/>softmax vote over 3 axes × 4 rotations"]
+    V --> B
     B --> C["<b>2. Shell outlier removal</b><br/>3-D largest connected component"]
     C --> D["<b>3. Otsu pore recovery</b><br/>threshold + spatial validation"]
     D --> E["<b>4. Chamber clustering</b><br/>t-SNE + HDBSCAN (k=3)"]
@@ -34,7 +36,7 @@ flowchart TD
     I --> J["Per-pore and per-chamber<br/>metrics + figures"]
 ```
 
-Stage 0 is how the training set was built. Stages 1–6 are automated, stage 7 is a human-in-the-loop review UI, and stage 8 produces the measurements and figures reported in the paper. The section headings under [Running the pipeline](#running-the-pipeline) use these same stage numbers.
+Stage 0 is how the training set was built. Only the annotated slices feed training (1a); the raw volumes go to prediction (1b), together with the resulting checkpoint. Stages 1–6 are automated, stage 7 is a human-in-the-loop review UI, and stage 8 produces the measurements and figures reported in the paper. The section headings under [Running the pipeline](#running-the-pipeline) use these same stage numbers.
 
 ---
 
@@ -201,11 +203,11 @@ Open <http://localhost:9546>. It binds to localhost only, so reach it over an SS
 
 **Output** goes to `data/train/`, paired by sorted filename: `images/<NAME>.tiff` (`uint8` grayscale), `masks/<NAME>.tiff` (RGB colour-coded), `weights/<NAME>.tiff` (`255` annotated / `0` ignore), `slices/<NAME>.npy` (slice geometry, for exact re-cutting) and `configs/<NAME>.json` (human-readable geometry record).
 
-Adapted from the upstream `interactive_unet` tool with its model training, inference and live-suggestion code removed, since `analysis/` already provides that.
+Adapted from [`interactive-unet`](https://github.com/laprade117/interactive-unet) by W. Laprade, with its model training, inference and live-suggestion code removed since `analysis/` already provides that.
 
-### Stage 1 — Segmentation
+### Stage 1a — Training
 
-**Training.**
+Reads the annotated slices from stage 0 — `data/train/` and `data/val/` — and writes a checkpoint. Raw volumes are not involved.
 
 ```bash
 python analysis/cli/train_cli.py                       # defaults reproduce the paper model
@@ -214,7 +216,9 @@ python analysis/cli/train_cli.py --architecture UnetPlusPlus --encoder resnet34 
 
 Key options: `--epochs --batch-size --learning-rate --architecture --encoder --loss {tversky,adaptive,mcc_ce} --tversky-alpha --scheduler {cosine,plateau,onecycle} --train-dir --val-dir`.
 
-**Inference.**
+### Stage 1b — Prediction
+
+Applies the trained checkpoint to raw micro-CT volumes, producing the `{0, 1, 2}` label volumes the post-analysis consumes.
 
 ```bash
 # whole directory of volumes
@@ -331,28 +335,37 @@ python figures/local_thickness_3d.py --sample MOM_12_01   # 4. interactive 3-D r
 
 | | |
 |---|---|
-| Architecture | U-Net, `mit_b0` (Mix Vision Transformer) encoder |
+| Architecture | Multi-planar 2-D U-Net, `mit_b0` (Mix Transformer) encoder |
 | Pretrained weights | ImageNet |
-| Classes | Background / Chamber / Pores |
-| Loss | Class-wise Tversky — pores use α=0.3, β=0.7 to favour recall |
-| Schedule | 200 epochs, batch size 16, cosine |
+| Classes | Background / Chamber (shell wall) / Pores |
+| Loss | Class-wise Tversky. Background and shell use α=β=0.5, reducing to Dice; pores use α=0.3, β=0.7 to penalise false negatives more heavily. ε=1×10⁻¹² |
+| Optimiser | AdamW, weight decay 1×10⁻², initial learning rate 1×10⁻⁴ |
+| Schedule | 200 epochs, batch size 16, cosine annealing with warm restarts |
+| Augmentation | Random flip, rotation, affine, brightness, elastic transform, grid distortion |
+| Checkpoint selection | Lowest validation loss |
 
-**Validation performance:** Pores Dice **0.607**, Pores IoU **0.436**, overall Dice **0.835**.
+**Validation performance** on the held-out slices, macro-averaged over the three classes:
 
-Pores are thin, sparse and ambiguous at CT resolution, so the loss is deliberately recall-biased for that class. Stages 3 and 5 then restore missed pore voxels, and stage 7 resolves the residual errors.
+| Dice | IoU | Precision | Recall |
+|---|---|---|---|
+| 0.835 | 0.750 | 0.811 | 0.856 |
+
+For the pore class alone, Dice is **0.607** and IoU **0.436**. Pores are thin, sparse and ambiguous at CT resolution — near the effective resolution of the 375–500 nm scans — so the loss is deliberately recall-biased for that class. Stages 3 and 5 then restore missed pore voxels, and stage 7 resolves the residual errors.
 
 ---
 
 ## Citation
 
-```bibtex
-@inproceedings{wu2026foram,
-  title     = {A Pipeline for Chamber-Resolved Analysis of Pore Traits in Foraminiferal {\textmu}CT Volumes},
-  author    = {Wu, Hanqing and others},
-  booktitle = {Proceedings of the European Conference on Computer Vision (ECCV) Workshops (CVNH)},
-  year      = {2026}
-}
-```
+The paper is accepted at the ECCV 2026 CVNH workshop; the camera-ready version is not yet published, so a full BibTeX entry with pages and DOI will be added here on publication.
+
+> **A Pipeline for Chamber-Resolved Analysis of Pore Traits in Foraminiferal μCT Volumes.**
+> Hanqing Wu¹, Constance Choquel²·³, Sha Ni³, Helena L. Filipsson³, Behnaz Pirzamanbin¹.
+> *ECCV 2026 Workshops (CVNH).*
+>
+> 1. Lund University, Department of Statistics, Sweden
+> 2. Univ Angers, Nantes Université, Le Mans Université, CNRS, Laboratoire de Planétologie et Géosciences, LPG UMR 6112, 49000 Angers, France
+> 3. Department of Geoscience, Aarhus University, Denmark
+> 4. Lund University, Department of Earth and Environmental Sciences, Sweden
 
 ## Micro-CT data source
 
@@ -364,9 +377,34 @@ The foraminifera μCT volumes are from Ni et al. (2025), openly archived on Mend
 
 ## Method references
 
-- Zingg, Th. (1935). *Beitrag zur Schotteranalyse.* PhD thesis, ETH Zürich.
+**Segmentation** (stages 1a–1b)
+
+- Ronneberger, O., Fischer, P. & Brox, T. (2015). U-Net: convolutional networks for biomedical image segmentation. *MICCAI 2015*, 234–241.
+- Perslev, M., Dam, E. B., Pai, A. & Igel, C. (2019). One network to segment them all: a general, lightweight system for accurate 3D medical image segmentation. *MICCAI 2019*, 30–38. — multi-planar formulation
+- Sengar, S. S. et al. (2022). UNet architectures in multiplanar volumetric segmentation. https://doi.org/10.48550/arXiv.2203.08194
+- Xie, E. et al. (2021). SegFormer: simple and efficient design for semantic segmentation with Transformers. *NeurIPS* 34, 12077–12090. — the MiT-B0 encoder
+- Deng, J. et al. (2009). ImageNet: a large-scale hierarchical image database. *CVPR 2009*, 248–255. — encoder pretraining
+- Tversky, A. (1977). Features of similarity. *Psychological Review* 84(4), 327.
+- Salehi, S. S. M., Erdogmus, D. & Gholipour, A. (2017). Tversky loss function for image segmentation using 3D fully convolutional deep networks. *MLMI 2017*, 379–387.
+- Wang, G. et al. (2019). Aleatoric uncertainty estimation with test-time augmentation for medical image segmentation. *Neurocomputing* 338, 34–45. — the 12-view TTA scheme
+- Laprade, W. M. et al. (2025). Deep learning for resolving 3D microstructural changes in the fibrotic liver. *Applications of Medical Artificial Intelligence*, 74–84. https://doi.org/10.1007/978-3-031-82007-6_8 — the multi-planar pipeline this work builds on
+
+**Clustering and assignment** (stages 4–5)
+
+- van der Maaten, L. & Hinton, G. (2008). Visualizing data using t-SNE. *JMLR* 9(86), 2579–2605.
+- Campello, R. J. G. B., Moulavi, D. & Sander, J. (2013). Density-based clustering based on hierarchical density estimates. *PAKDD 2013*, 160–172. — HDBSCAN
+- McInnes, L., Healy, J. & Astels, S. (2017). hdbscan: hierarchical density based clustering. *JOSS* 2(11). https://doi.org/10.21105/joss.00205
+- Pedregosa, F. et al. (2011). Scikit-learn: machine learning in Python. *JMLR* 12, 2825–2830. — t-SNE implementation
+
+**Morphometry** (stage 8)
+
+- Hildebrand, T. & Rüegsegger, P. (1997). A new method for the model-independent assessment of thickness in three-dimensional images. *J. Microsc.* 185, 67–75. — local thickness
+- Zingg, Th. (1935). *Beitrag zur Schotteranalyse.* PhD thesis, ETH Zürich. — elongation/flatness shape classes
 - Blott, S. J. & Pye, K. (2008). Particle shape: a review and new methods of characterization and classification. *Sedimentology* 55, 31–63.
-- Hildebrand, T. & Rüegsegger, P. (1997). A new method for the model-independent assessment of thickness in three-dimensional images. *J. Microsc.* 185, 67–75.
+
+**Annotation tool**
+
+- Laprade, W. *interactive-unet*. https://github.com/laprade117/interactive-unet — `annotation/` is adapted from this tool.
 
 ## License
 
