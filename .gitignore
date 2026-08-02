@@ -23,6 +23,10 @@ data/visualizations/
 # Exception: sample editor states are small and ARE tracked
 !data/samples/editor_state/*.npz
 
+# ── Quantification stage: supply your own inputs, outputs are generated ──────
+quantification/data/
+quantification/output/
+
 # ── Model checkpoints (distributed as GitHub Release assets) ─────────────────
 *.ckpt
 *.pth

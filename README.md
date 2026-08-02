@@ -4,6 +4,16 @@ End-to-end pipeline for **annotating, segmenting, clustering, correcting and qua
 
 Accepted at **ECCV 2026 Workshop CVNH**. This repository contains the whole workflow: the browser-based annotation tool that produced the training data, the deep-learning segmentation model, the machine-learning post-analysis that resolves individual chambers, an interactive 3-D correction interface, and the morphometric quantification that produces the paper's numbers and figures.
 
+## Contents
+
+- [Pipeline overview](#pipeline-overview)
+- [Repository layout](#repository-layout)
+- [Installation](#installation)
+- [Data formats](#data-formats) — [what ships here](#what-ships-in-this-repository) · [slice annotations](#slice-annotations--rgb-encoding) · [volume labels](#volume-labels--integer-encoding) · [editor state](#editor-state-files) · [large data](#large-data-distributed-separately)
+- [Running the pipeline](#running-the-pipeline) — [0 annotation](#stage-0--annotation) · [1 segmentation](#stage-1--segmentation) · [2–6 post-analysis](#stages-26--automated-post-analysis) · [7 correction](#stage-7--manual-correction) · [8 quantification](#stage-8--quantification)
+- [The segmentation model](#the-segmentation-model)
+- [Citation and sources](#citation)
+
 ---
 
 ## Pipeline overview
@@ -24,7 +34,7 @@ flowchart TD
     I --> J["Per-pore and per-chamber<br/>metrics + figures"]
 ```
 
-Stage 0 is how the training set was built; stages 1–6 are automated; stage 7 is a human-in-the-loop review UI; stage 8 produces the measurements and figures reported in the paper.
+Stage 0 is how the training set was built. Stages 1–6 are automated, stage 7 is a human-in-the-loop review UI, and stage 8 produces the measurements and figures reported in the paper. The section headings under [Running the pipeline](#running-the-pipeline) use these same stage numbers.
 
 ---
 
@@ -35,7 +45,7 @@ annotation/                              Stage 0 — slice annotation interface
     app.py                               NiceGUI server; --port / --host
     annotator.py  slicer.py              Painting canvas; arbitrary-orientation slice extraction
     utils.py  volumedata.py              I/O, palette, volume handling
-analysis/
+analysis/                                Stages 1–7
     model.py  trainer.py  loader.py      Segmentation model, training loop, dataset
     adaptive_loss.py  metrics.py         Class-wise Tversky loss, Dice/IoU metrics
     predict.py                           12-view TTA sliding-window volume inference
@@ -61,7 +71,7 @@ quantification/                          Stage 8 — morphometry and figures
     run_all_quantification.py            Per-chamber and per-pore metrics from label volumes
     config.py                            Central paths, overridable by environment variables
     figures/                             Local-thickness 3-D, pore morphometry, chamber figures
-data/                                    Training slices + results (see Data below)
+data/                                    Annotated slices and results — see Data formats
 ```
 
 ---
@@ -75,29 +85,31 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Python 3.12 is the tested version. A single `requirements.txt` covers every stage. A CUDA GPU is required for training and strongly recommended for volume inference (12-view TTA is compute-heavy); annotation, post-processing and quantification are CPU-only.
+Python 3.12 is the tested version, and one `requirements.txt` covers every stage. A CUDA GPU is required for training and strongly recommended for volume inference, since 12-view TTA is compute-heavy; annotation, post-processing and quantification are CPU-only.
 
-The annotator alone needs just `nicegui`, `opencv-python`, `numpy`, `scipy`, `scikit-image` and `Pillow` — no `torch` — if you want a minimal install for stage 0 only.
+For stage 0 alone, the annotator needs only `nicegui`, `opencv-python`, `numpy`, `scipy`, `scikit-image` and `Pillow` — no `torch`.
 
 ---
 
-## Data
+## Data formats
 
-### Included in this repository (~43 MB)
+### What ships in this repository
+
+About 43 MB:
 
 | Path | Contents |
 |---|---|
 | `data/train/` | 171 annotated slices — `images/`, `masks/`, `weights/` |
 | `data/val/` | 40 annotated slices — `images/`, `masks/`, `weights/` |
-| `data/results/summary_tsv/` | Add-back assignment records — one row per recovered pore, 122 forams |
+| `data/results/summary_tsv/` | Add-back assignment records, one row per recovered pore, 122 forams |
 | `data/results/summary_npz/` | The same records, machine-readable |
 | `data/samples/editor_state/` | 2 sample volumes for trying the correction interface |
 
 Slices are `768 × 768` deflate-compressed TIFF. Compression is **lossless** — `skimage.io.imread` returns arrays byte-identical to the uncompressed originals.
 
-### Annotation encoding
+### Slice annotations — RGB encoding
 
-Masks are RGB colour-coded with three classes plus an ignore region:
+Applies to the 2-D `masks/` TIFFs. Three classes plus an ignore region:
 
 | Colour | RGB | Class |
 |---|---|---|
@@ -106,23 +118,13 @@ Masks are RGB colour-coded with three classes plus an ignore region:
 | Green | `(60, 180, 75)` | 2 — Pores |
 | Black | `(0, 0, 0)` | *unannotated* — excluded from the loss |
 
-The paired `weights/` maps are binary: `255` where the annotation is valid, `0` over unannotated regions. The loss is masked by this map, so black areas never contribute a gradient — roughly a third of the current dataset is deliberately left unannotated, and partial annotation is the intended way to work. `analysis/utils.py` decodes the colours through `CLASS_COLORS`, which is the single source of truth for the encoding; change it there if you change the palette.
+The paired `weights/` maps are binary: `255` where the annotation is valid, `0` over unannotated regions. The loss is masked by this map, so black areas never contribute a gradient. Roughly a third of the current dataset is deliberately left unannotated — partial annotation is the intended way to work.
 
-Note the **brush order in the annotator is red, green, yellow**, so its second brush is pores and its third is chamber. Only the RGB value written into the mask matters downstream, never the brush index.
+`analysis/utils.py` decodes these colours through `CLASS_COLORS`, the single source of truth for the encoding; change it there if you change the palette. Note the **brush order in the annotator is red, green, yellow**, so its second brush is pores and its third is chamber. Only the RGB value written into the mask matters downstream, never the brush index.
 
-### Distributed separately
+### Volume labels — integer encoding
 
-Full micro-CT volumes (23 GB), labelled/clustered volumes (63 GB) and the complete set of 122 editor states are too large for Git. The **trained model checkpoint** is attached to the [GitHub Release](../../releases/latest):
-
-```bash
-mkdir -p final_model
-curl -L -o final_model/model_Unet_mitb0_newTversky.ckpt \
-  https://github.com/<your-username>/foram-porosity-pipeline/releases/latest/download/model_Unet_mitb0_newTversky.ckpt
-```
-
-### Volume label encoding
-
-The 3-D `.npy` volumes the pipeline produces use a single integer label scheme, distinct from the RGB scheme above, which applies only to the 2-D annotated slices:
+Applies to the 3-D `.npy` volumes the pipeline produces, and is unrelated to the RGB scheme above:
 
 | Value | Meaning |
 |---|---|
@@ -132,9 +134,11 @@ The 3-D `.npy` volumes the pipeline produces use a single integer label scheme, 
 | `3` | Chamber with the second most |
 | `N` | Chamber ranked N−1 by pore count |
 
-That ranking is what stage 6 establishes, so `2` means the same thing in every volume. Output of stages 2–3 is the exception: it uses only `{0, 1, 2}`, all pore voxels sharing label `2`, because chambers are not resolved yet. That undifferentiated form is what the editor's `volume_path` points at; the chamber-labelled form is what quantification consumes.
+That ranking is what stage 6 establishes, so `2` means the same thing in every volume. Output of stages 2–3 is the exception: it uses only `{0, 1, 2}`, all pore voxels sharing label `2`, because chambers are not resolved yet. That undifferentiated form is what the editor opens; the chamber-labelled form is what quantification consumes.
 
-Editor state `.npz` files — stage 7 input, two samples in `data/samples/editor_state/` — contain:
+### Editor state files
+
+Stage 7 input, `.npz`, two samples in `data/samples/editor_state/`:
 
 | Key | Contents |
 |---|---|
@@ -148,11 +152,21 @@ Editor state `.npz` files — stage 7 input, two samples in `data/samples/editor
 
 The editor reconstructs chamber assignments from `labels`, not from the volume it opens.
 
+### Large data distributed separately
+
+Full micro-CT volumes (23 GB), labelled volumes (63 GB) and the complete set of 122 editor states are too large for Git. The **trained model checkpoint** is attached to the [GitHub Release](../../releases/latest):
+
+```bash
+mkdir -p final_model
+curl -L -o final_model/model_Unet_mitb0_newTversky.ckpt \
+  https://github.com/<your-username>/foram-porosity-pipeline/releases/latest/download/model_Unet_mitb0_newTversky.ckpt
+```
+
 ---
 
-## Usage
+## Running the pipeline
 
-### 0. Annotation
+### Stage 0 — Annotation
 
 The browser tool that produced `data/train/` and `data/val/`. It cuts arbitrarily-oriented 2-D slices from the 3-D volumes and writes the image/mask/weight triples `analysis/loader.py` consumes.
 
@@ -173,8 +187,6 @@ Open <http://localhost:9546>. It binds to localhost only, so reach it over an SS
 
 **Workflow.** A random slice is cut from a random volume at a random orientation; paint each class, leaving anything you are unsure about unpainted; **Save Annotation** writes the files; **Resample** for the next slice. Sampling can be Random, Axially-aligned, Custom (explicit origin and rotation vector) or Replicate (re-cut a previously saved slice).
 
-**Controls.**
-
 | Input | Action |
 |---|---|
 | Left drag | Paint with the current class |
@@ -187,11 +199,13 @@ Open <http://localhost:9546>. It binds to localhost only, so reach it over an SS
 | `Ctrl+Z` / `Ctrl+Y` | Undo / redo |
 | `Ctrl+S` | Save annotation |
 
-**Output**, written to `data/train/` and paired by sorted filename: `images/<NAME>.tiff` (`uint8` grayscale), `masks/<NAME>.tiff` (RGB colour-coded), `weights/<NAME>.tiff` (`255` annotated / `0` ignore), `slices/<NAME>.npy` (slice geometry, for exact re-cutting) and `configs/<NAME>.json` (human-readable geometry record).
+**Output** goes to `data/train/`, paired by sorted filename: `images/<NAME>.tiff` (`uint8` grayscale), `masks/<NAME>.tiff` (RGB colour-coded), `weights/<NAME>.tiff` (`255` annotated / `0` ignore), `slices/<NAME>.npy` (slice geometry, for exact re-cutting) and `configs/<NAME>.json` (human-readable geometry record).
 
 Adapted from the upstream `interactive_unet` tool with its model training, inference and live-suggestion code removed, since `analysis/` already provides that.
 
-### 1. Training
+### Stage 1 — Segmentation
+
+**Training.**
 
 ```bash
 python analysis/cli/train_cli.py                       # defaults reproduce the paper model
@@ -200,7 +214,7 @@ python analysis/cli/train_cli.py --architecture UnetPlusPlus --encoder resnet34 
 
 Key options: `--epochs --batch-size --learning-rate --architecture --encoder --loss {tversky,adaptive,mcc_ce} --tversky-alpha --scheduler {cosine,plateau,onecycle} --train-dir --val-dir`.
 
-### 2. Inference
+**Inference.**
 
 ```bash
 # whole directory of volumes
@@ -212,31 +226,31 @@ python analysis/cli/predict_cli.py --model final_model/model_Unet_mitb0_newTvers
     --input data/image_volumes/MOM_12_01.npy
 ```
 
-Inference predicts along all three orthogonal axes at four rotations (12 views total) and soft-votes the averaged probabilities, which suppresses view-dependent false positives and improves 3-D connectivity.
+Inference predicts along all three orthogonal axes at four rotations — 12 views — and soft-votes the averaged probabilities, which suppresses view-dependent false positives and improves 3-D connectivity.
 
-### 3. Post-analysis (machine learning)
+### Stages 2–6 — Automated post-analysis
 
 ```bash
-# Stage 2 — remove shell outliers
+# 2 — remove shell outliers
 python analysis/post_processing/remove_outliers.py --pred pred.npy --out cleaned.npy
 
-# Stage 3 — Otsu pore recovery
+# 3 — Otsu pore recovery
 python analysis/post_processing/clean_pores.py cleaned.npy pores_cleaned.npy
 
-# Stage 4 — t-SNE + HDBSCAN chamber clustering
+# 4 — t-SNE + HDBSCAN chamber clustering
 python analysis/post_processing/prototype_tsne.py pores_cleaned.npy cluster_state.npz
 
-# Stage 5 — add back small rejected components
+# 5 — add back small rejected components
 python analysis/post_processing/add_back_forams.py pores_cleaned.npy cluster_state.npz \
     --outdir corrected/ --min-voxels 20 --knn-k 3 --write-corrected-volume
 
-# Stage 6 — reindex chambers by descending pore count
+# 6 — reindex chambers by descending pore count
 python analysis/post_processing/reindex_clusters.py --in-dir corrected/ --out-dir final_state/
 ```
 
 Chamber clustering embeds morphological pore features with t-SNE and groups them with HDBSCAN; components HDBSCAN rejects as noise are reassigned to their nearest cluster by centroid proximity.
 
-### 4. Correction interface
+### Stage 7 — Manual correction
 
 ```bash
 # build editor state from a volume + clustering result
@@ -266,21 +280,21 @@ Saving writes four things under a `manual_review/` folder beside the state direc
 
 The frontend vendors three.js, Vue and TrackballControls in `analysis/post_processing/static/` so the interface runs fully offline on a compute node.
 
-### 5. Quantification
+### Stage 8 — Quantification
 
-Takes the finished label volumes and turns them into per-pore, per-chamber and whole-shell measurements plus the paper's figures. Input is one `.npy` per specimen, a 3-D `uint8` label volume with `0` background, `1` shell, `>=2` one label per chamber.
+Turns the finished label volumes into per-pore, per-chamber and whole-shell measurements plus the paper's figures.
 
-Paths live in [`quantification/config.py`](quantification/config.py) and can all be set by environment variable, so no code edits are needed:
+**Inputs.** Paths live in [`quantification/config.py`](quantification/config.py) and are all overridable by environment variable, so no code edits are needed:
 
-```bash
-export FORAM_VOL_DIR=/path/to/clustered_volume        # input label volumes (.npy)
-export FORAM_NI_INFO="/path/to/Ni et al info.xlsx"    # voxel-size table
-export FORAM_ORDER_XLSX=/path/to/chamber_ordering.xlsx
-export FORAM_QUANT_DIR=/path/to/output/quantification
-export FORAM_FIG_DIR=/path/to/output/figures
-```
+| Input | Environment variable | Contents |
+|---|---|---|
+| Label volumes, `*.npy` | `FORAM_VOL_DIR` | One 3-D `uint8` volume per specimen, in the [integer encoding](#volume-labels--integer-encoding) above |
+| `Ni et al info.xlsx` | `FORAM_NI_INFO` | Voxel sizes; columns `CT file name` and `resolution nm` |
+| `chamber_ordering.xlsx` | `FORAM_ORDER_XLSX` | Whorl ordering of chambers, needed only for the chamber-wise figures |
 
-Anything unset falls back to `quantification/data/` and `quantification/output/`.
+Outputs go to `FORAM_QUANT_DIR` and `FORAM_FIG_DIR`. Anything unset falls back to `quantification/data/` and `quantification/output/`, both created automatically and both git-ignored — supply your own inputs there or point the variables elsewhere.
+
+**Running.**
 
 ```bash
 cd quantification
@@ -291,7 +305,11 @@ python figures/pore_and_chamber_figures.py  # 3. morphometry + chamber-wise figu
 python figures/local_thickness_3d.py --sample MOM_12_01   # 4. interactive 3-D report
 ```
 
-| Output | Contents |
+`run_all_quantification.py` is resume-safe and caches local-thickness arrays, so an interrupted run picks up where it stopped.
+
+**Outputs.**
+
+| File | Contents |
 |---|---|
 | `chamber_summary.csv` | One row per chamber: pore count, mean pore volume, mean local thickness, sphericity, elongation/flatness |
 | `all_pores.csv` | One row per pore: volume, surface area, sphericity, elongation/flatness, local-thickness stats |
@@ -300,18 +318,16 @@ python figures/local_thickness_3d.py --sample MOM_12_01   # 4. interactive 3-D r
 | `pore_shape.png/.pdf`, `chamber_metrics.png/.pdf` | Pore-shape panels; per-chamber trends along the last whorl with bootstrap CIs |
 | `thickness_3d_report.html` | Interactive 3-D local-thickness scenes for one specimen |
 
-**Method notes.** Local thickness follows Hildebrand & Rüegsegger (1997) — the diameter of the largest sphere fitting inside the structure at each voxel — computed with SciPy distance transforms. Zingg (1935) shape uses `Elongation = sqrt(λ1/λ2)` and `Flatness = sqrt(λ2/λ3)` from the pore's covariance eigenvalues; the square root converts variance ratios into axis-**length** ratios (variance scales as length²), so the `1.5` class boundary matches Zingg's classic 3:2.
+**Method notes.** Local thickness follows Hildebrand & Rüegsegger (1997) — the diameter of the largest sphere fitting inside the structure at each voxel — computed with SciPy distance transforms. Zingg (1935) shape uses `Elongation = sqrt(λ1/λ2)` and `Flatness = sqrt(λ2/λ3)` from the pore's covariance eigenvalues; the square root converts variance ratios into axis-**length** ratios, since variance scales as length², so the `1.5` class boundary matches Zingg's classic 3:2.
 
 | | elongation ≤ 1.5 | elongation > 1.5 |
 |---|---|---|
 | **flatness > 1.5** | oblate (disk) | triaxial |
 | **flatness ≤ 1.5** | isotropic (equant) | prolate (rod) |
 
-`run_all_quantification.py` is resume-safe and caches local-thickness arrays, so an interrupted run picks up where it stopped.
-
 ---
 
-## Model
+## The segmentation model
 
 | | |
 |---|---|
@@ -323,7 +339,7 @@ python figures/local_thickness_3d.py --sample MOM_12_01   # 4. interactive 3-D r
 
 **Validation performance:** Pores Dice **0.607**, Pores IoU **0.436**, overall Dice **0.835**.
 
-Pores are thin, sparse and ambiguous at CT resolution, so the loss is deliberately recall-biased for that class — the Otsu recovery and add-back stages then restore missed pore voxels, and the correction interface resolves the residual errors.
+Pores are thin, sparse and ambiguous at CT resolution, so the loss is deliberately recall-biased for that class. Stages 3 and 5 then restore missed pore voxels, and stage 7 resolves the residual errors.
 
 ---
 
@@ -338,7 +354,7 @@ Pores are thin, sparse and ambiguous at CT resolution, so the loss is deliberate
 }
 ```
 
-## Data source
+## Micro-CT data source
 
 The foraminifera μCT volumes are from Ni et al. (2025), openly archived on Mendeley Data and not redistributed here:
 
@@ -346,7 +362,7 @@ The foraminifera μCT volumes are from Ni et al. (2025), openly archived on Mend
 - 3D micro-CT morphology data [Dataset]. Mendeley Data, V1. https://doi.org/10.17632/9fztrjc2d5.1
 - 3D SRμCT scans [Dataset]. Mendeley Data, V1. https://doi.org/10.17632/7s7kgppzgz.1
 
-## References
+## Method references
 
 - Zingg, Th. (1935). *Beitrag zur Schotteranalyse.* PhD thesis, ETH Zürich.
 - Blott, S. J. & Pye, K. (2008). Particle shape: a review and new methods of characterization and classification. *Sedimentology* 55, 31–63.
