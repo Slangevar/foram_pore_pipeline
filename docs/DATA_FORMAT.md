@@ -2,7 +2,7 @@
 
 The authoritative, analysis-ready foram dataset. 122 volumes.
 
-This folder is the output of `scripts/analysis/reindex_clusters.py` applied to
+This folder is the output of `src/post_processing/reindex_clusters.py` applied to
 `data/corrected_cluster_state/all122_addback20_k3_clean/`.
 
 ---

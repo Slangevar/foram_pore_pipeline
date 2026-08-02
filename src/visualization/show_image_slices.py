@@ -44,13 +44,16 @@ def save_axis_sheet(vol, axis, out_path, n=16, p_low=0.5, p_high=99.5, cmap="gra
 
 def main():
     ap = argparse.ArgumentParser(description="Write contact sheets of raw .npy volume slices.")
-    ap.add_argument("--input", default="data/image_volumes/MOM_7_01.npy")
-    ap.add_argument("--out-dir", default="data/visualizations/image_volumes/MOM_7_01/slices")
+    ap.add_argument("--input", required=True, help="Path to a 3-D .npy image volume.")
+    ap.add_argument("--out-dir", default=None,
+                    help="Output folder. Defaults to "
+                         "data/visualizations/image_volumes/<stem>/slices.")
     ap.add_argument("--n", type=int, default=16, help="Number of slices per axis sheet.")
     args = ap.parse_args()
 
     inp = Path(args.input)
-    out_dir = Path(args.out_dir)
+    out_dir = (Path(args.out_dir) if args.out_dir
+               else Path("data/visualizations/image_volumes") / inp.stem / "slices")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     vol = np.load(inp, mmap_mode="r")

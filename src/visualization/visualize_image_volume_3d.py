@@ -12,11 +12,8 @@ The default view is intentionally shell-focused:
     - keep the largest connected bright component
     - render that component as a clean 3-D mesh
 
-Default target:
-    data/image_volumes/MOM_7_01.npy
-
 Example:
-    python scripts/analysis/visualize_image_volume_3d.py
+    python src/visualization/visualize_image_volume_3d.py --input volume.npy
 """
 
 import argparse
@@ -31,15 +28,7 @@ from skimage.filters import threshold_otsu
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_INPUT = PROJECT_ROOT / "data" / "image_volumes" / "MOM_7_01.npy"
-DEFAULT_OUT = (
-    PROJECT_ROOT
-    / "data"
-    / "visualizations"
-    / "image_volumes"
-    / "MOM_7_01"
-    / "MOM_7_01_3d_volume.html"
-)
+DEFAULT_OUT_ROOT = PROJECT_ROOT / "data" / "visualizations" / "image_volumes"
 
 
 def parse_args():
@@ -48,13 +37,14 @@ def parse_args():
     )
     parser.add_argument(
         "--input",
-        default=str(DEFAULT_INPUT),
-        help="Path to a 3-D .npy image volume. Defaults to MOM_7_01.npy.",
+        required=True,
+        help="Path to a 3-D .npy image volume.",
     )
     parser.add_argument(
         "--out",
-        default=str(DEFAULT_OUT),
-        help="Output HTML path.",
+        default=None,
+        help="Output HTML path. Defaults to "
+             "data/visualizations/image_volumes/<stem>/<stem>_3d_volume.html.",
     )
     parser.add_argument(
         "--axes",
@@ -271,7 +261,11 @@ def main():
         sys.exit(f"Input volume not found: {input_path}")
 
     stride = max(1, int(args.stride))
-    out_path = Path(args.out)
+    if args.out:
+        out_path = Path(args.out)
+    else:
+        stem = input_path.stem
+        out_path = DEFAULT_OUT_ROOT / stem / f"{stem}_3d_volume.html"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading volume with memory mapping: {input_path}")

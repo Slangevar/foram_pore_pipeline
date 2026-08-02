@@ -2,11 +2,8 @@
 """
 Python-native viewer for a 3-D .npy image volume.
 
-Default target:
-    data/image_volumes/MOM_7_01.npy
-
 Usage:
-    python scripts/analysis/view_image_volume_python.py
+    python src/visualization/view_image_volume_python.py --input volume.npy
 
 In a local Python session this opens an interactive matplotlib window with
 axial, coronal, and sagittal slice sliders. On a headless server, use
@@ -22,7 +19,6 @@ import numpy as np
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_INPUT = PROJECT_ROOT / "data" / "image_volumes" / "MOM_7_01.npy"
 DEFAULT_OUT_ROOT = PROJECT_ROOT / "data" / "visualizations" / "image_volumes"
 
 
@@ -32,8 +28,8 @@ def parse_args():
     )
     parser.add_argument(
         "--input",
-        default=str(DEFAULT_INPUT),
-        help="Path to a 3-D .npy image volume. Defaults to MOM_7_01.npy.",
+        required=True,
+        help="Path to a 3-D .npy image volume.",
     )
     parser.add_argument(
         "--axes",

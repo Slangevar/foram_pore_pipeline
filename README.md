@@ -40,22 +40,23 @@ src/
     adaptive_loss.py  metrics.py         Class-wise Tversky loss, Dice/IoU metrics
     predict.py                           12-view TTA sliding-window volume inference
     cli/train_cli.py  cli/predict_cli.py Command-line entry points
-    post_processing/
+    post_processing/                     Stages 2–7, in pipeline order
         remove_outliers.py               Stage 2 — largest-connected-component cleanup
         clean_pores.py                   Stage 3 — Otsu pore recovery
         prototype_tsne.py                Stage 4 — t-SNE + HDBSCAN chamber clustering
         add_back_forams.py               Stage 5 — add-back of rejected components
+        organize_addback_outputs.py      Stage 5 → 6 — sorts add-back output into the expected tree
+        reindex_clusters.py              Stage 6 — relabel chambers by pore count
         prepare_editor_data.py           Builds editor state from clustering output
         cluster_editor_vue.py            Stage 7 — interactive 3-D correction interface
+    analysis/                            Method evaluation, off the main path
+        analyze_otsu_pore_recovery.py    Ablation of the Otsu recovery step
+        chamber_volume_estimate.py       Per-chamber volume, three assignment methods compared
+    visualization/                       Viewers and renders
         visualize_prediction.py          Overlay renders of predictions
-scripts/analysis/
-    organize_addback_outputs.py          Stage 5 → 6 — sorts add-back output into the expected tree
-    reindex_clusters.py                  Stage 6 — relabel chambers by pore count
-    analyze_otsu_pore_recovery.py        Ablation of the Otsu recovery step
-    chamber_volume_estimate.py           Per-chamber volume, three assignment methods compared
-    show_image_slices.py                 Quick PNG previews of slices through a volume
-    view_image_volume_python.py          Matplotlib slice viewer for a raw .npy volume
-    visualize_image_volume_3d.py         Headless Plotly 3-D view of a raw volume
+        show_image_slices.py             PNG previews of slices through a volume
+        view_image_volume_python.py      Matplotlib slice viewer for a raw .npy volume
+        visualize_image_volume_3d.py     Headless Plotly 3-D view of a raw volume
 quantification/                          Stage 8 — morphometry and figures
     run_all_quantification.py            Per-chamber and per-pore metrics from label volumes
     config.py                            Central paths, overridable by environment variables
@@ -205,7 +206,7 @@ python src/post_processing/add_back_forams.py pores_cleaned.npy cluster_state.np
     --outdir corrected/ --min-voxels 20 --knn-k 3 --write-corrected-volume
 
 # Stage 6 — reindex chambers by descending pore count
-python scripts/analysis/reindex_clusters.py --in-dir corrected/ --out-dir final_state/
+python src/post_processing/reindex_clusters.py --in-dir corrected/ --out-dir final_state/
 ```
 
 Chamber clustering embeds morphological pore features with t-SNE and groups them with HDBSCAN; components HDBSCAN rejects as noise are reassigned to their nearest cluster by centroid proximity.
