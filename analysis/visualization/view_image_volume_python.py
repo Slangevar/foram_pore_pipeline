@@ -3,7 +3,7 @@
 Python-native viewer for a 3-D .npy image volume.
 
 Usage:
-    python src/visualization/view_image_volume_python.py --input volume.npy
+    python analysis/visualization/view_image_volume_python.py --input volume.npy
 
 In a local Python session this opens an interactive matplotlib window with
 axial, coronal, and sagittal slice sliders. On a headless server, use

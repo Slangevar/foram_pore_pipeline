@@ -79,7 +79,7 @@ input_size = utils.get_input_size()
 #   red    (230, 25, 75)  -> background
 #   green  (60, 180, 75)  -> pores
 #   yellow (255, 225, 25) -> chamber (shell wall)
-# These RGB values are the interchange format read back by src/utils.py
+# These RGB values are the interchange format read back by analysis/utils.py
 # (CLASS_COLORS) when the annotations are loaded for training.
 colors = [
     "rgba(230, 25, 75, 1)",

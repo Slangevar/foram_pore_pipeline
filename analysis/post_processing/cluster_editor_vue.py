@@ -5,7 +5,7 @@ Drop-in replacement for cluster_editor.py with a modern Material Design UI.
 Same Python backend, same data format, same launch command.
 
 Usage:
-    python src/post_processing/cluster_editor_vue.py data/samples/editor_state --port 5010
+    python analysis/post_processing/cluster_editor_vue.py data/samples/editor_state --port 5010
 """
 
 import numpy as np

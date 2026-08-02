@@ -6,7 +6,7 @@ file — supply your own copies, or point the environment variables elsewhere.
 
 | Path | Env var | Contents |
 |---|---|---|
-| `clustered_volume/*.npy` | `FORAM_VOL_DIR` | One 3-D `uint8` label volume per specimen: `0` background, `1` shell, `>=2` one label per chamber's pores. These are the output of the manual-correction stage — see [`../../docs/DATA_FORMAT.md`](../../docs/DATA_FORMAT.md). |
+| `clustered_volume/*.npy` | `FORAM_VOL_DIR` | One 3-D `uint8` label volume per specimen: `0` background, `1` shell, `>=2` one label per chamber's pores. These are the output of the manual-correction stage — see the "Volume label encoding" section of [`../../README.md`](../../README.md). |
 | `Ni et al info.xlsx` | `FORAM_NI_INFO` | Voxel sizes, with columns `CT file name` and `resolution nm`. |
 | `chamber_ordering.xlsx` | `FORAM_ORDER_XLSX` | Whorl ordering of chambers, needed only for the chamber-wise figures. |
 

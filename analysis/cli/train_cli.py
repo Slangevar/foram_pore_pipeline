@@ -8,7 +8,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from src import trainer
+from analysis import trainer
 
 def main():
     # Optimization for Tensor Cores (A100)

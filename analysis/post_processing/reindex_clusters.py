@@ -37,12 +37,12 @@ Skip flags
 
 Usage:
     # Full run (first time):
-    python src/post_processing/reindex_clusters.py \
+    python analysis/post_processing/reindex_clusters.py \
         --in-dir  data/corrected_cluster_state/all122_addback20_k3_clean \
         --out-dir data/final_foram_state
 
     # editor_state already done — only process the remaining subfolders:
-    python src/post_processing/reindex_clusters.py \
+    python analysis/post_processing/reindex_clusters.py \
         --in-dir  data/corrected_cluster_state/all122_addback20_k3_clean \
         --out-dir data/final_foram_state \
         --skip-editor-state

@@ -13,7 +13,7 @@ import volumedata
 # follow. For this dataset that means brush 1 = red, 2 = green, 3 = yellow.
 #
 # The contract with training is the RGB VALUE, never the position here:
-# src/utils.py decodes masks through its own CLASS_COLORS, where
+# analysis/utils.py decodes masks through its own CLASS_COLORS, where
 # red -> background, yellow -> chamber, green -> pores. The two lists are
 # deliberately in different orders. If you change an RGB value in one,
 # change it in the other.
@@ -164,7 +164,7 @@ def compute_weight_map(colored_mask):
 
     Note this deliberately does not decode class channels. The annotator only
     ever needs annotated-vs-unannotated; training decodes the classes itself
-    via src/utils.py's CLASS_COLORS, which is ordered by class rather than by
+    via analysis/utils.py's CLASS_COLORS, which is ordered by class rather than by
     brush.
     """
 

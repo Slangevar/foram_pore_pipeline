@@ -9,7 +9,7 @@ For each editor-state NPZ the script produces one HTML per method:
   Method C  flood-fill     — BFS from pore voxels outward through shell (vol==1)
 
 Usage:
-    python src/analysis/chamber_volume_estimate.py \
+    python analysis/evaluation/chamber_volume_estimate.py \
         --state-dir data/corrected_cluster_state/all122_addback20_k3_clean/editor_state \
         --volumes MOM_31_03,MOM_250_04,MOM_398_7,MOM_398_3,MOM_890_3 \
         --out-dir data/analysis/chamber_volume_viz \

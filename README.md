@@ -35,7 +35,7 @@ annotation/                              Stage 0 — slice annotation interface
     app.py                               NiceGUI server; --port / --host
     annotator.py  slicer.py              Painting canvas; arbitrary-orientation slice extraction
     utils.py  volumedata.py              I/O, palette, volume handling
-src/
+analysis/
     model.py  trainer.py  loader.py      Segmentation model, training loop, dataset
     adaptive_loss.py  metrics.py         Class-wise Tversky loss, Dice/IoU metrics
     predict.py                           12-view TTA sliding-window volume inference
@@ -49,7 +49,7 @@ src/
         reindex_clusters.py              Stage 6 — relabel chambers by pore count
         prepare_editor_data.py           Builds editor state from clustering output
         cluster_editor_vue.py            Stage 7 — interactive 3-D correction interface
-    analysis/                            Method evaluation, off the main path
+    evaluation/                          Method evaluation, off the main path
         analyze_otsu_pore_recovery.py    Ablation of the Otsu recovery step
         chamber_volume_estimate.py       Per-chamber volume, three assignment methods compared
     visualization/                       Viewers and renders
@@ -61,7 +61,6 @@ quantification/                          Stage 8 — morphometry and figures
     run_all_quantification.py            Per-chamber and per-pore metrics from label volumes
     config.py                            Central paths, overridable by environment variables
     figures/                             Local-thickness 3-D, pore morphometry, chamber figures
-docs/                                    Volume label format, cluster editor manual
 data/                                    Training slices + results (see Data below)
 ```
 
@@ -107,7 +106,7 @@ Masks are RGB colour-coded with three classes plus an ignore region:
 | Green | `(60, 180, 75)` | 2 — Pores |
 | Black | `(0, 0, 0)` | *unannotated* — excluded from the loss |
 
-The paired `weights/` maps are binary: `255` where the annotation is valid, `0` over unannotated regions. The loss is masked by this map, so black areas never contribute a gradient — roughly a third of the current dataset is deliberately left unannotated, and partial annotation is the intended way to work. `src/utils.py` decodes the colours through `CLASS_COLORS`, which is the single source of truth for the encoding; change it there if you change the palette.
+The paired `weights/` maps are binary: `255` where the annotation is valid, `0` over unannotated regions. The loss is masked by this map, so black areas never contribute a gradient — roughly a third of the current dataset is deliberately left unannotated, and partial annotation is the intended way to work. `analysis/utils.py` decodes the colours through `CLASS_COLORS`, which is the single source of truth for the encoding; change it there if you change the palette.
 
 Note the **brush order in the annotator is red, green, yellow**, so its second brush is pores and its third is chamber. Only the RGB value written into the mask matters downstream, never the brush index.
 
@@ -121,7 +120,33 @@ curl -L -o final_model/model_Unet_mitb0_newTversky.ckpt \
   https://github.com/<your-username>/foram-porosity-pipeline/releases/latest/download/model_Unet_mitb0_newTversky.ckpt
 ```
 
-Volume-level label encoding is documented in [`docs/DATA_FORMAT.md`](docs/DATA_FORMAT.md).
+### Volume label encoding
+
+The 3-D `.npy` volumes the pipeline produces use a single integer label scheme, distinct from the RGB scheme above, which applies only to the 2-D annotated slices:
+
+| Value | Meaning |
+|---|---|
+| `0` | Background (air/resin outside the foram) |
+| `1` | Shell material |
+| `2` | Chamber with the **most** pore voxels |
+| `3` | Chamber with the second most |
+| `N` | Chamber ranked N−1 by pore count |
+
+That ranking is what stage 6 establishes, so `2` means the same thing in every volume. Output of stages 2–3 is the exception: it uses only `{0, 1, 2}`, all pore voxels sharing label `2`, because chambers are not resolved yet. That undifferentiated form is what the editor's `volume_path` points at; the chamber-labelled form is what quantification consumes.
+
+Editor state `.npz` files — stage 7 input, two samples in `data/samples/editor_state/` — contain:
+
+| Key | Contents |
+|---|---|
+| `centroids_3d` | `(P, 3)` centroid of each pore component |
+| `labels` | `(P,)` chamber assignment per pore: `>=2` chamber, `0` deleted |
+| `labeled_pores` | Full 3-D volume, each pore component uniquely labelled |
+| `shell_mask` | Binary shell mask |
+| `volume_path` | Path to the corresponding `{0,1,2}` volume |
+| `pore_voxels`, `pore_voxels_owner` | Sampled pore voxels and their pore index, for 3-D rendering |
+| `chamber_voxels` | Sampled shell voxels, for context rendering |
+
+The editor reconstructs chamber assignments from `labels`, not from the volume it opens.
 
 ---
 
@@ -129,12 +154,12 @@ Volume-level label encoding is documented in [`docs/DATA_FORMAT.md`](docs/DATA_F
 
 ### 0. Annotation
 
-The browser tool that produced `data/train/` and `data/val/`. It cuts arbitrarily-oriented 2-D slices from the 3-D volumes and writes the image/mask/weight triples `src/loader.py` consumes.
+The browser tool that produced `data/train/` and `data/val/`. It cuts arbitrarily-oriented 2-D slices from the 3-D volumes and writes the image/mask/weight triples `analysis/loader.py` consumes.
 
 ```bash
 # run from the directory containing data/image_volumes/*.npy
 cd /path/to/project
-python /path/to/repo/annotation/app.py --port 9600
+python /path/to/repo/annotation/app.py --port 9546
 ```
 
 | Option | Default | Purpose |
@@ -164,13 +189,13 @@ Open <http://localhost:9546>. It binds to localhost only, so reach it over an SS
 
 **Output**, written to `data/train/` and paired by sorted filename: `images/<NAME>.tiff` (`uint8` grayscale), `masks/<NAME>.tiff` (RGB colour-coded), `weights/<NAME>.tiff` (`255` annotated / `0` ignore), `slices/<NAME>.npy` (slice geometry, for exact re-cutting) and `configs/<NAME>.json` (human-readable geometry record).
 
-Adapted from the upstream `interactive_unet` tool with its model training, inference and live-suggestion code removed, since `src/` already provides that.
+Adapted from the upstream `interactive_unet` tool with its model training, inference and live-suggestion code removed, since `analysis/` already provides that.
 
 ### 1. Training
 
 ```bash
-python src/cli/train_cli.py                       # defaults reproduce the paper model
-python src/cli/train_cli.py --architecture UnetPlusPlus --encoder resnet34 --epochs 100
+python analysis/cli/train_cli.py                       # defaults reproduce the paper model
+python analysis/cli/train_cli.py --architecture UnetPlusPlus --encoder resnet34 --epochs 100
 ```
 
 Key options: `--epochs --batch-size --learning-rate --architecture --encoder --loss {tversky,adaptive,mcc_ce} --tversky-alpha --scheduler {cosine,plateau,onecycle} --train-dir --val-dir`.
@@ -179,11 +204,11 @@ Key options: `--epochs --batch-size --learning-rate --architecture --encoder --l
 
 ```bash
 # whole directory of volumes
-python src/cli/predict_cli.py --model final_model/model_Unet_mitb0_newTversky.ckpt \
+python analysis/cli/predict_cli.py --model final_model/model_Unet_mitb0_newTversky.ckpt \
     --input data/image_volumes --input-size 768
 
 # single volume
-python src/cli/predict_cli.py --model final_model/model_Unet_mitb0_newTversky.ckpt \
+python analysis/cli/predict_cli.py --model final_model/model_Unet_mitb0_newTversky.ckpt \
     --input data/image_volumes/MOM_12_01.npy
 ```
 
@@ -193,20 +218,20 @@ Inference predicts along all three orthogonal axes at four rotations (12 views t
 
 ```bash
 # Stage 2 — remove shell outliers
-python src/post_processing/remove_outliers.py --pred pred.npy --out cleaned.npy
+python analysis/post_processing/remove_outliers.py --pred pred.npy --out cleaned.npy
 
 # Stage 3 — Otsu pore recovery
-python src/post_processing/clean_pores.py cleaned.npy pores_cleaned.npy
+python analysis/post_processing/clean_pores.py cleaned.npy pores_cleaned.npy
 
 # Stage 4 — t-SNE + HDBSCAN chamber clustering
-python src/post_processing/prototype_tsne.py pores_cleaned.npy cluster_state.npz
+python analysis/post_processing/prototype_tsne.py pores_cleaned.npy cluster_state.npz
 
 # Stage 5 — add back small rejected components
-python src/post_processing/add_back_forams.py pores_cleaned.npy cluster_state.npz \
+python analysis/post_processing/add_back_forams.py pores_cleaned.npy cluster_state.npz \
     --outdir corrected/ --min-voxels 20 --knn-k 3 --write-corrected-volume
 
 # Stage 6 — reindex chambers by descending pore count
-python src/post_processing/reindex_clusters.py --in-dir corrected/ --out-dir final_state/
+python analysis/post_processing/reindex_clusters.py --in-dir corrected/ --out-dir final_state/
 ```
 
 Chamber clustering embeds morphological pore features with t-SNE and groups them with HDBSCAN; components HDBSCAN rejects as noise are reassigned to their nearest cluster by centroid proximity.
@@ -215,15 +240,31 @@ Chamber clustering embeds morphological pore features with t-SNE and groups them
 
 ```bash
 # build editor state from a volume + clustering result
-python src/post_processing/prepare_editor_data.py volume.npy cluster_state.npz editor_state/
+python analysis/post_processing/prepare_editor_data.py volume.npy cluster_state.npz editor_state/
 
 # launch the interface (try it on the bundled samples)
-python src/post_processing/cluster_editor_vue.py data/samples/editor_state --port 5005
+python analysis/post_processing/cluster_editor_vue.py data/samples/editor_state --port 5005
 ```
 
-Open <http://localhost:5005>. Paint pores with the select/eraser brush, then **Merge** or **Split** chambers; `Ctrl+Z` undoes. Saving writes a corrected volume, a reloadable editor state, and per-volume summaries. Full manual: [`docs/CLUSTER_EDITOR_USER_MANUAL.md`](docs/CLUSTER_EDITOR_USER_MANUAL.md).
+Open <http://localhost:5005>. Pick a volume from the dropdown, paint the pores that need changing, apply **Merge** or **Split**, repeat until the chamber labels are right, then **Save**.
 
-The frontend vendors three.js, Vue and TrackballControls in `src/post_processing/static/` so the interface runs fully offline on a compute node.
+| Input | Action |
+|---|---|
+| Left drag | Rotate the camera |
+| Right drag | Pan |
+| Mouse wheel | Zoom |
+| `Select` / `Eraser` mode | Add pores to / remove pores from the selection |
+| Shift + mouse wheel | Brush radius |
+| Shift + left drag | Rotate while in Select/Eraser mode |
+| Double-click a chamber row | Solo that chamber; double-click again to restore |
+| `Ctrl+Z` | Undo |
+| `Esc` | Close the help modal, otherwise return to Navigate mode |
+
+**Merge** combines the chambers of the selected pores, or every visible chamber if nothing is selected — so set visibility before merging to avoid pulling in chambers you cannot see. **Split** makes a new chamber from the selection.
+
+Saving writes four things under a `manual_review/` folder beside the state directory: `corrected_volume/<name>.npy`, a reloadable `editor_state/<name>.npz`, and `summary_npz/` plus `summary_tsv/` records. The session then switches to the saved state, so continuing to edit builds on your correction instead of overwriting the pipeline's original.
+
+The frontend vendors three.js, Vue and TrackballControls in `analysis/post_processing/static/` so the interface runs fully offline on a compute node.
 
 ### 5. Quantification
 
@@ -315,4 +356,4 @@ The foraminifera μCT volumes are from Ni et al. (2025), openly archived on Mend
 
 Released under the MIT License — see [LICENSE](LICENSE).
 
-Vendored frontend libraries in `src/post_processing/static/` retain their own licenses (three.js — MIT; Vue — MIT).
+Vendored frontend libraries in `analysis/post_processing/static/` retain their own licenses (three.js — MIT; Vue — MIT).

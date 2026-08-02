@@ -13,7 +13,7 @@ The default view is intentionally shell-focused:
     - render that component as a clean 3-D mesh
 
 Example:
-    python src/visualization/visualize_image_volume_3d.py --input volume.npy
+    python analysis/visualization/visualize_image_volume_3d.py --input volume.npy
 """
 
 import argparse
