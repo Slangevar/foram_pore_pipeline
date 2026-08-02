@@ -12,7 +12,7 @@ Accepted at **ECCV 2026 Workshop CVNH**. This repository contains the whole work
 - [Data formats](#data-formats) — [what ships here](#what-ships-in-this-repository) · [slice annotations](#slice-annotations--rgb-encoding) · [volume labels](#volume-labels--integer-encoding) · [editor state](#editor-state-files) · [large data](#large-data-distributed-separately)
 - [Running the pipeline](#running-the-pipeline) — [0 annotation](#stage-0--annotation) · [1a training](#stage-1a--training) · [1b prediction](#stage-1b--prediction) · [2–6 post-analysis](#stages-26--automated-post-analysis) · [7 correction](#stage-7--manual-correction) · [8 quantification](#stage-8--quantification)
 - [The segmentation model](#the-segmentation-model)
-- [Citation and sources](#citation)
+- [Micro-CT data source](#micro-ct-data-source) · [Method references](#method-references)
 
 ---
 
@@ -344,28 +344,15 @@ python figures/local_thickness_3d.py --sample MOM_12_01   # 4. interactive 3-D r
 | Augmentation | Random flip, rotation, affine, brightness, elastic transform, grid distortion |
 | Checkpoint selection | Lowest validation loss |
 
-**Validation performance** on the held-out slices, macro-averaged over the three classes:
+**Validation performance** on the held-out slices, macro-averaged over the background, shell and pore classes:
 
 | Dice | IoU | Precision | Recall |
 |---|---|---|---|
 | 0.835 | 0.750 | 0.811 | 0.856 |
 
-For the pore class alone, Dice is **0.607** and IoU **0.436**. Pores are thin, sparse and ambiguous at CT resolution — near the effective resolution of the 375–500 nm scans — so the loss is deliberately recall-biased for that class. Stages 3 and 5 then restore missed pore voxels, and stage 7 resolves the residual errors.
+Pores are thin, sparse and ambiguous at CT resolution — close to the effective resolution of the 375–500 nm scans — so the loss is deliberately recall-biased for that class. Stages 3 and 5 then restore missed pore voxels, and stage 7 resolves the residual errors.
 
 ---
-
-## Citation
-
-The paper is accepted at the ECCV 2026 CVNH workshop; the camera-ready version is not yet published, so a full BibTeX entry with pages and DOI will be added here on publication.
-
-> **A Pipeline for Chamber-Resolved Analysis of Pore Traits in Foraminiferal μCT Volumes.**
-> Hanqing Wu¹, Constance Choquel²·³, Sha Ni³, Helena L. Filipsson³, Behnaz Pirzamanbin¹.
-> *ECCV 2026 Workshops (CVNH).*
->
-> 1. Lund University, Department of Statistics, Sweden
-> 2. Univ Angers, Nantes Université, Le Mans Université, CNRS, Laboratoire de Planétologie et Géosciences, LPG UMR 6112, 49000 Angers, France
-> 3. Department of Geoscience, Aarhus University, Denmark
-> 4. Lund University, Department of Earth and Environmental Sciences, Sweden
 
 ## Micro-CT data source
 
