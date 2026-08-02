@@ -1,6 +1,6 @@
 # foram-porosity-pipeline
 
-End-to-end pipeline for **segmenting, clustering, correcting and quantifying pore structure in foraminifera micro-CT volumes**.
+End-to-end pipeline for **annotating, segmenting, clustering, correcting and quantifying pore structure in foraminifera micro-CT volumes**.
 
 Accepted at **ECCV 2026 Workshop CVNH**. This repository contains the whole workflow: the browser-based annotation tool that produced the training data, the deep-learning segmentation model, the machine-learning post-analysis that resolves individual chambers, an interactive 3-D correction interface, and the morphometric quantification that produces the paper's numbers and figures.
 
@@ -32,7 +32,7 @@ Stage 0 is how the training set was built; stages 1–6 are automated; stage 7 i
 
 ```
 annotation/                              Stage 0 — slice annotation interface
-    app.py                               NiceGUI server; --port / --host / --data-dir
+    app.py                               NiceGUI server; --port / --host
     annotator.py  slicer.py              Painting canvas; arbitrary-orientation slice extraction
     utils.py  volumedata.py              I/O, palette, volume handling
 src/
@@ -50,7 +50,7 @@ src/
         visualize_prediction.py          Overlay renders of predictions
 scripts/analysis/
     reindex_clusters.py                  Stage 6 — relabel chambers by pore count
-    quantification.py                    Earlier per-chamber quantification (superseded)
+    quantification.py                    Earlier per-chamber quantification (superseded by quantification/)
     chamber_volume_estimate.py           Per-chamber volume estimation
     analyze_otsu_pore_recovery.py        Ablation of the Otsu recovery step
     calculate_stats.py                   Outlier-removal statistics from cleaning logs
@@ -61,8 +61,7 @@ quantification/                          Stage 8 — morphometry and figures
     run_all_quantification.py            Per-chamber and per-pore metrics from label volumes
     config.py                            Central paths, overridable by environment variables
     figures/                             Local-thickness 3-D, pore morphometry, chamber figures
-notebooks/                               Original quantification notebooks (superseded)
-docs/                                    Data format, editor manual, quantification notes
+docs/                                    Volume label format, cluster editor manual
 data/                                    Training slices + results (see Data below)
 ```
 
@@ -91,8 +90,8 @@ The annotator alone needs just `nicegui`, `opencv-python`, `numpy`, `scipy`, `sc
 |---|---|
 | `data/train/` | 171 annotated slices — `images/`, `masks/`, `weights/` |
 | `data/val/` | 40 annotated slices — `images/`, `masks/`, `weights/` |
-| `data/results/summary_tsv/` | Per-chamber quantification output, 122 forams |
-| `data/results/summary_npz/` | Same, machine-readable |
+| `data/results/summary_tsv/` | Add-back assignment records — one row per recovered pore, 122 forams |
+| `data/results/summary_npz/` | The same records, machine-readable |
 | `data/samples/editor_state/` | 2 sample volumes for trying the correction interface |
 
 Slices are `768 × 768` deflate-compressed TIFF. Compression is **lossless** — `skimage.io.imread` returns arrays byte-identical to the uncompressed originals.
@@ -133,18 +132,17 @@ Volume-level label encoding is documented in [`docs/DATA_FORMAT.md`](docs/DATA_F
 The browser tool that produced `data/train/` and `data/val/`. It cuts arbitrarily-oriented 2-D slices from the 3-D volumes and writes the image/mask/weight triples `src/loader.py` consumes.
 
 ```bash
-# from a working directory containing data/image_volumes/*.npy
-python annotation/app.py
-
-# or point it anywhere, on any port
-python annotation/app.py --data-dir /path/to/project --port 9600
+# run from the directory containing data/image_volumes/*.npy
+cd /path/to/project
+python /path/to/repo/annotation/app.py --port 9600
 ```
 
 | Option | Default | Purpose |
 |---|---|---|
 | `--port` | `9546` | Serving port. Change it if the default is taken, or to run several at once. |
 | `--host` | `127.0.0.1` | Interface to bind. Localhost-only by default. |
-| `--data-dir` | `.` | Directory holding `data/image_volumes/`; annotations are written to `data/train/` beneath it. |
+
+Data paths resolve against the **working directory**, so launch it from wherever your `data/` lives. There is deliberately no `--data-dir`: nicegui re-executes the program on every page request, and changing the working directory at startup breaks that re-execution.
 
 Open <http://localhost:9546>. It binds to localhost only, so reach it over an SSH tunnel (`ssh -N -L 9546:localhost:9546 <user>@<host>`) or your editor's port forwarding. `--host 0.0.0.0` exposes it on the network, but the tool is unauthenticated and writes files, so avoid that on a machine with a public address.
 
@@ -268,7 +266,7 @@ python figures/local_thickness_3d.py --sample MOM_12_01   # 4. interactive 3-D r
 | **flatness > 1.5** | oblate (disk) | triaxial |
 | **flatness ≤ 1.5** | isotropic (equant) | prolate (rod) |
 
-`run_all_quantification.py` is resume-safe and caches local-thickness arrays. The earlier `scripts/analysis/quantification.py` and the `notebooks/` versions are kept for provenance but are superseded by this package; see [`docs/QUANTIFICATION_NOTES.md`](docs/QUANTIFICATION_NOTES.md) for how the notebooks were adapted to this dataset.
+`run_all_quantification.py` is resume-safe and caches local-thickness arrays. The earlier `scripts/analysis/quantification.py` remains for reference but is superseded by this package.
 
 ---
 
