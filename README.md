@@ -49,14 +49,13 @@ src/
         cluster_editor_vue.py            Stage 7 — interactive 3-D correction interface
         visualize_prediction.py          Overlay renders of predictions
 scripts/analysis/
+    organize_addback_outputs.py          Stage 5 → 6 — sorts add-back output into the expected tree
     reindex_clusters.py                  Stage 6 — relabel chambers by pore count
-    quantification.py                    Earlier per-chamber quantification (superseded by quantification/)
-    chamber_volume_estimate.py           Per-chamber volume estimation
     analyze_otsu_pore_recovery.py        Ablation of the Otsu recovery step
-    calculate_stats.py                   Outlier-removal statistics from cleaning logs
+    chamber_volume_estimate.py           Per-chamber volume, three assignment methods compared
+    show_image_slices.py                 Quick PNG previews of slices through a volume
     view_image_volume_python.py          Matplotlib slice viewer for a raw .npy volume
     visualize_image_volume_3d.py         Headless Plotly 3-D view of a raw volume
-    serve_html_folder.py                 Serves generated HTML, prints SSH forwarding commands
 quantification/                          Stage 8 — morphometry and figures
     run_all_quantification.py            Per-chamber and per-pore metrics from label volumes
     config.py                            Central paths, overridable by environment variables
@@ -266,7 +265,7 @@ python figures/local_thickness_3d.py --sample MOM_12_01   # 4. interactive 3-D r
 | **flatness > 1.5** | oblate (disk) | triaxial |
 | **flatness ≤ 1.5** | isotropic (equant) | prolate (rod) |
 
-`run_all_quantification.py` is resume-safe and caches local-thickness arrays. The earlier `scripts/analysis/quantification.py` remains for reference but is superseded by this package.
+`run_all_quantification.py` is resume-safe and caches local-thickness arrays, so an interrupted run picks up where it stopped.
 
 ---
 

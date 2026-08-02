@@ -66,7 +66,7 @@ Chamber-labelled volumes. Each pore voxel is assigned to a chamber (label ≥ 2)
 t-SNE + HDBSCAN clustering followed by add-back, and then reindexed by descending pore count.
 Background (0) and shell (1) are unchanged from `predicted_cleaned_volume/`.
 
-**Use these for downstream quantification and analysis (`scripts/analysis/quantification.py`).**
+**Use these for downstream quantification and analysis (`quantification/run_all_quantification.py`).**
 
 ---
 
