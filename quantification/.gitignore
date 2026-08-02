@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# R session junk
+.Rhistory
+.RData
+.Rapp.history
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Generated outputs (CSVs, figures, local-thickness cache, HTML reports)
+output/
+
+# Input data — supply your own (see data/README.md); not tracked
+data/*
+!data/README.md
