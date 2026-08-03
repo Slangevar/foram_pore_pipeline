@@ -1,4 +1,4 @@
-# foram-porosity-pipeline
+# foram_pore_pipeline
 
 End-to-end pipeline for **annotating, segmenting, clustering, correcting and quantifying pore structure in foraminifera micro-CT volumes**.
 
@@ -81,8 +81,8 @@ data/                                    Annotated slices and results — see Da
 ## Installation
 
 ```bash
-git clone https://github.com/<your-username>/foram-porosity-pipeline.git
-cd foram-porosity-pipeline
+git clone https://github.com/<your-username>/foram_pore_pipeline.git
+cd foram_pore_pipeline
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -161,7 +161,7 @@ Full micro-CT volumes (23 GB), labelled volumes (63 GB) and the complete set of 
 ```bash
 mkdir -p final_model
 curl -L -o final_model/model_Unet_mitb0_newTversky.ckpt \
-  https://github.com/<your-username>/foram-porosity-pipeline/releases/latest/download/model_Unet_mitb0_newTversky.ckpt
+  https://github.com/<your-username>/foram_pore_pipeline/releases/latest/download/model_Unet_mitb0_newTversky.ckpt
 ```
 
 ---
