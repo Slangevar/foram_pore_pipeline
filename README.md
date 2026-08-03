@@ -81,7 +81,7 @@ data/                                    Annotated slices and results — see Da
 ## Installation
 
 ```bash
-git clone https://github.com/<your-username>/foram_pore_pipeline.git
+git clone https://github.com/Slangevar/foram_pore_pipeline.git
 cd foram_pore_pipeline
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -161,7 +161,7 @@ Full micro-CT volumes (23 GB), labelled volumes (63 GB) and the complete set of 
 ```bash
 mkdir -p final_model
 curl -L -o final_model/model_Unet_mitb0_newTversky.ckpt \
-  https://github.com/<your-username>/foram_pore_pipeline/releases/latest/download/model_Unet_mitb0_newTversky.ckpt
+  https://github.com/Slangevar/foram_pore_pipeline/releases/download/Checkpoint/model_Unet_mitb0_newTversky.ckpt
 ```
 
 ---
