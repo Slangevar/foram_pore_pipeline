@@ -173,10 +173,23 @@ curl -L -o final_model/model_Unet_mitb0_newTversky.ckpt \
 The browser tool that produced `data/train/` and `data/val/`. It cuts arbitrarily-oriented 2-D slices from the 3-D volumes and writes the image/mask/weight triples `analysis/loader.py` consumes.
 
 ```bash
-# run from the directory containing data/image_volumes/*.npy
-cd /path/to/project
-python /path/to/repo/annotation/app.py --port 9546
+# Run from the directory that CONTAINS data/, never from annotation/ itself.
+# For the volumes shipped with this repository that is the repository root:
+cd /path/to/foram_pore_pipeline
+python annotation/app.py --port 9546
 ```
+
+Launching from inside `annotation/` is the usual mistake. Every data path is a
+bare relative glob, so `annotation/app.py` run from `annotation/` looks for
+`annotation/data/image_volumes/`, finds nothing, and creates that empty tree on
+the way past — while your volumes sit unread one level up. The symptom is:
+
+```
+No volumetric data found. Place one or more 3-D .npy volumes in data/image_volumes/ and restart.
+```
+
+followed by a UI reporting no volumes. Delete the stray `annotation/data/`, `cd`
+to the directory holding your real `data/`, and start again.
 
 | Option | Default | Purpose |
 |---|---|---|

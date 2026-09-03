@@ -891,23 +891,39 @@ with ui.column(align_items="center").classes("w-full justify-center"):
                 with ui.column(align_items="center").classes(
                     "bg-gray-100 w-full q-py-sm"
                 ).style("gap:2px"):
+                    # These three lines report the current volume and its
+                    # slicer geometry. With no volumes there is neither, so
+                    # carry the notice in row 1 and leave the rest blank --
+                    # the same thing update_annotator_info() does later.
+                    if len(dataset) == 0:
+                        volume_text = NO_VOLUMES_MSG
+                        origin_text = ""
+                        rotation_text = ""
+                    else:
+                        origin = dataset[volume_index].slicer.origin
+                        rot = np.round(dataset[volume_index].slicer.rot_vec, 2)
+                        volume_text = (
+                            f"Current Volume: {dataset[volume_index].filename}"
+                        )
+                        origin_text = (
+                            f"Origin: "
+                            f"({origin[0]:.0f}, {origin[1]:.0f}, {origin[2]:.0f})"
+                        )
+                        rotation_text = f"Rotation: {rot.tolist()}"
+
                     # Row 1
                     ui_volume_name_label = ui.label(
-                        f"Current Volume: {dataset[volume_index].filename}"
+                        volume_text
                     ).classes("q-my-0 text-center")
 
                     # Row 2
                     ui_origin_label = ui.label(
-                        f"Origin: ("
-                        f"{dataset[volume_index].slicer.origin[0]:.0f}, "
-                        f"{dataset[volume_index].slicer.origin[1]:.0f}, "
-                        f"{dataset[volume_index].slicer.origin[2]:.0f}"
-                        f")"
+                        origin_text
                     ).classes("q-my-0 text-center")
 
                     # Row 3
                     ui_rotation_label = ui.label(
-                        f"Rotation: {np.round(dataset[volume_index].slicer.rot_vec, 2).tolist()}"
+                        rotation_text
                     ).classes("q-my-0 text-center")
 
                 with ui.row(align_items="center").classes(
@@ -997,7 +1013,11 @@ with ui.column(align_items="center").classes("w-full justify-center"):
                         ui_volume_picker = (
                             ui.select(
                                 [d.filename for d in dataset],
-                                value=dataset[volume_index].filename,
+                                value=(
+                                    dataset[volume_index].filename
+                                    if len(dataset) > 0
+                                    else None
+                                ),
                                 label="Volume",
                                 on_change=update_volume,
                             )
