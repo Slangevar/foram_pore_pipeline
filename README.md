@@ -179,7 +179,8 @@ cd /path/to/foram_pore_pipeline
 python annotation/app.py --port 9546
 ```
 
-Launching from inside `annotation/` is the usual mistake. Every data path is a
+The is one sample volume in  `data/image_volumes/`. In general cases, you can replace the sample files by the volumes you one to annotate. 
+Note that launching from inside `annotation/` is the usual mistake. Every data path is a
 bare relative glob, so `annotation/app.py` run from `annotation/` looks for
 `annotation/data/image_volumes/`, finds nothing, and creates that empty tree on
 the way past — while your volumes sit unread one level up. The symptom is:
