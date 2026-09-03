@@ -6,13 +6,28 @@ Accepted at **ECCV 2026 Workshop CVNH**. This repository contains the whole work
 
 ## Contents
 
-- [Pipeline overview](#pipeline-overview)
-- [Repository layout](#repository-layout)
-- [Installation](#installation)
-- [Data formats](#data-formats) — [what ships here](#what-ships-in-this-repository) · [slice annotations](#slice-annotations--rgb-encoding) · [volume labels](#volume-labels--integer-encoding) · [editor state](#editor-state-files) · [large data](#large-data-distributed-separately)
-- [Running the pipeline](#running-the-pipeline) — [0 annotation](#stage-0--annotation) · [1a training](#stage-1a--training) · [1b prediction](#stage-1b--prediction) · [2–6 post-analysis](#stages-26--automated-post-analysis) · [7 correction](#stage-7--manual-correction) · [8 quantification](#stage-8--quantification)
-- [The segmentation model](#the-segmentation-model)
-- [Micro-CT data source](#micro-ct-data-source) · [Method references](#method-references)
+- [foram\_pore\_pipeline](#foram_pore_pipeline)
+  - [Contents](#contents)
+  - [Pipeline overview](#pipeline-overview)
+  - [Repository layout](#repository-layout)
+  - [Installation](#installation)
+  - [Data formats](#data-formats)
+    - [What ships in this repository](#what-ships-in-this-repository)
+    - [Slice annotations — RGB encoding](#slice-annotations--rgb-encoding)
+    - [Volume labels — integer encoding](#volume-labels--integer-encoding)
+    - [Editor state files](#editor-state-files)
+    - [Large data distributed separately](#large-data-distributed-separately)
+  - [Running the pipeline](#running-the-pipeline)
+    - [Stage 0 — Annotation](#stage-0--annotation)
+    - [Stage 1a — Training](#stage-1a--training)
+    - [Stage 1b — Prediction](#stage-1b--prediction)
+    - [Stages 2–6 — Automated post-analysis](#stages-26--automated-post-analysis)
+    - [Stage 7 — Manual correction](#stage-7--manual-correction)
+    - [Stage 8 — Quantification](#stage-8--quantification)
+  - [The segmentation model](#the-segmentation-model)
+  - [Micro-CT data source](#micro-ct-data-source)
+  - [Method references](#method-references)
+  - [License](#license)
 
 ---
 
@@ -172,18 +187,31 @@ curl -L -o final_model/model_Unet_mitb0_newTversky.ckpt \
 
 The browser tool that produced `data/train/` and `data/val/`. It cuts arbitrarily-oriented 2-D slices from the 3-D volumes and writes the image/mask/weight triples `analysis/loader.py` consumes.
 
+No volumes ship with this repository — `data/image_volumes/` is absent from a
+fresh clone and is `.gitignore`d, so create it and add the volumes you want to
+annotate. Each must be a 3-D `.npy` array:
+
 ```bash
-# Run from the directory that CONTAINS data/, never from annotation/ itself.
-# For the volumes shipped with this repository that is the repository root:
-cd /path/to/foram_pore_pipeline
-python annotation/app.py --port 9546
+# 1. Create the volume directory and populate it.
+mkdir -p /path/to/your/project/data/image_volumes
+cp /path/to/your/volumes/*.npy /path/to/your/project/data/image_volumes/
+
+# 2. Run from the directory that CONTAINS data/ -- never from annotation/.
+#    The script path may be absolute, so your data need not sit in the repo.
+cd /path/to/your/project
+python /path/to/foram_pore_pipeline/annotation/app.py --port 9546
 ```
 
-The is one sample volume in  `data/image_volumes/`. In general cases, you can replace the sample files by the volumes you one to annotate. 
-Note that launching from inside `annotation/` is the usual mistake. Every data path is a
-bare relative glob, so `annotation/app.py` run from `annotation/` looks for
+`/path/to/your/project` may be the repository root — put `data/image_volumes/`
+there and the shorter `python annotation/app.py` works — or any other directory.
+Each is an independent annotation project with its own `data/train/`, which is
+how one machine hosts several at once.
+
+Launching from inside `annotation/` is the usual mistake. Every data path is a
+bare relative glob, so running from `annotation/` looks for
 `annotation/data/image_volumes/`, finds nothing, and creates that empty tree on
-the way past — while your volumes sit unread one level up. The symptom is:
+the way past — while your volumes sit unread in the directory you meant. The
+symptom is:
 
 ```
 No volumetric data found. Place one or more 3-D .npy volumes in data/image_volumes/ and restart.
