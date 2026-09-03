@@ -62,8 +62,16 @@ drag_settle_task = None
 # Creates initial directory structure if not already created
 utils.create_directories()
 
+# Shown in the UI wherever a volume would otherwise be named. The tool is
+# usable only once volumes exist, so every no-data path says the same thing.
+NO_VOLUMES_MSG = (
+    "No volumes found in data/image_volumes/ — add 3-D .npy volumes and restart"
+)
+
 # Load data
 dataset = utils.load_dataset()
+# volume_index is bound ONLY when there is something to index. Every read of it
+# must therefore be guarded by len(dataset) == 0 first.
 if len(dataset) > 0:
     volume_index = np.random.randint(len(dataset))
 
@@ -201,7 +209,13 @@ def randomize():
 def origin_section():
     global ui_input_origin_x, ui_input_origin_y, ui_input_origin_z, nx, ny, nz
 
-    nz, ny, nx = dataset[volume_index].image_volume.shape  # shape of the volume
+    # With no volume loaded there is no extent to bound these inputs by. Fall
+    # back to the slice size so the fields still render; they are inert until
+    # volumes are added and the tool restarted.
+    if len(dataset) == 0:
+        nz = ny = nx = input_size
+    else:
+        nz, ny, nx = dataset[volume_index].image_volume.shape  # shape of the volume
 
     ui.markdown("**Origin of the Slice**").classes("w-full")
     with ui.column().classes("gap-2 w-full p-0"):
@@ -722,9 +736,7 @@ def update_annotator_info():
     # With no volumes loaded the slice is a blank placeholder, and there is no
     # slicer geometry to report. Say so plainly rather than leaving a black canvas.
     if len(dataset) == 0:
-        ui_volume_name_label.set_text(
-            "No volumes found in data/image_volumes/ — add 3-D .npy volumes and restart"
-        )
+        ui_volume_name_label.set_text(NO_VOLUMES_MSG)
         ui_origin_label.set_text("")
         ui_rotation_label.set_text("")
         return
